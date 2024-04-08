@@ -10,7 +10,6 @@ from google.oauth2 import service_account
 
 
 
-
 credentials_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") 
 
 # Temporary Debugging
@@ -22,23 +21,28 @@ print("---- End credentials ----")
 def analyze_text_salience(text):
     """Analyzes the text and returns entities with their salience scores."""
     client = language_v1.LanguageServiceClient()
+
     # Force UTF-8 encoding
     if not isinstance(text, str):
         text = text.decode('utf-8')  # Decode if necessary
+
     document = language_v1.Document(content=text, type_=language_v1.Document.Type.PLAIN_TEXT)
-    response = client.analyze_entities(document=document)
-    entity_dict = {}
-    for entity in response.entities:
-        entity_dict[entity.name] = {
-            "Type": language_v1.Entity.Type(entity.type_).name,
-            "Salience": entity.salience
-        }
-    return entity_dict
+
+    try:  # Error handling
+        response = client.analyze_entities(document=document)
+        entity_dict = {}
+        for entity in response.entities:
+            entity_dict[entity.name] = {
+                "Type": language_v1.Entity.Type(entity.type_).name,
+                "Salience": entity.salience
+            }
+        return entity_dict
+
     except google.api_core.exceptions.GoogleAPICallError as e:
         print("Error from Google NLP API:", e)
 
- if not text:
-    return {}  # Return an empty dictionary if no text is given
+    if not text:  # Empty input check
+        return {}  # Return an empty dictionary if no text is given
 
 
 # Streamlit web interface
