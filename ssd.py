@@ -19,11 +19,12 @@ print(credentials_json)
 print(type(credentials_json))  # Check the type
 print("---- End credentials ----")
 
-
-
 def analyze_text_salience(text):
     """Analyzes the text and returns entities with their salience scores."""
     client = language_v1.LanguageServiceClient()
+    # Force UTF-8 encoding
+    if not isinstance(text, str):
+        text = text.decode('utf-8')  # Decode if necessary
     document = language_v1.Document(content=text, type_=language_v1.Document.Type.PLAIN_TEXT)
     response = client.analyze_entities(document=document)
     entity_dict = {}
@@ -33,6 +34,12 @@ def analyze_text_salience(text):
             "Salience": entity.salience
         }
     return entity_dict
+     except google.api_core.exceptions.GoogleAPICallError as e:
+        print("Error from Google NLP API:", e)
+
+ if not text:
+    return {}  # Return an empty dictionary if no text is given
+
 
 # Streamlit web interface
 st.title('Text Analysis with Google NLP')
