@@ -5,45 +5,22 @@ import streamlit as st
 from google.cloud import language_v1
 import pandas as pd
 import numpy as np
-import json
-from google.oauth2 import service_account 
 
-
-
-credentials_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") 
-
-# Temporary Debugging
-print("---- Credentials from environment ----")
-print(credentials_json)  
-print(type(credentials_json))  # Check the type
-print("---- End credentials ----")
+# Set the environment variable to the path of your Google Cloud credentials
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "//Users//annamacleod//Downloads//nlp-entity-detection-83e41befe7fa.json"
 
 def analyze_text_salience(text):
     """Analyzes the text and returns entities with their salience scores."""
     client = language_v1.LanguageServiceClient()
-
-    # Force UTF-8 encoding
-    if not isinstance(text, str):
-        text = text.decode('utf-8')  # Decode if necessary
-
     document = language_v1.Document(content=text, type_=language_v1.Document.Type.PLAIN_TEXT)
-
-    try:  # Error handling
-        response = client.analyze_entities(document=document)
-        entity_dict = {}
-        for entity in response.entities:
-            entity_dict[entity.name] = {
-                "Type": language_v1.Entity.Type(entity.type_).name,
-                "Salience": entity.salience
-            }
-        return entity_dict
-
-    except google.api_core.exceptions.GoogleAPICallError as e:
-        print("Error from Google NLP API:", e)
-
-    if not text:  # Empty input check
-        return {}  # Return an empty dictionary if no text is given
-
+    response = client.analyze_entities(document=document)
+    entity_dict = {}
+    for entity in response.entities:
+        entity_dict[entity.name] = {
+            "Type": language_v1.Entity.Type(entity.type_).name,
+            "Salience": entity.salience
+        }
+    return entity_dict
 
 # Streamlit web interface
 st.title('Text Analysis with Google NLP')
