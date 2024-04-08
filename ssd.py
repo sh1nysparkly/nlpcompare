@@ -5,9 +5,14 @@ import streamlit as st
 from google.cloud import language_v1
 import pandas as pd
 import numpy as np
+import json
+from google.oauth2 import service_account 
 
-# Set the environment variable to the path of your Google Cloud credentials
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "//Users//annamacleod//Downloads//nlp-entity-detection-83e41befe7fa.json"
+# Create API client.
+credentials = service_account.Credentials.from_service_account_info(
+    st.secrets["GOOGLE_APPLICATION_CREDENTIALS"]
+)
+
 
 def analyze_text_salience(text):
     """Analyzes the text and returns entities with their salience scores."""
