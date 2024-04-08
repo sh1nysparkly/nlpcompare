@@ -34,7 +34,7 @@ def analyze_text_salience(text):
             "Salience": entity.salience
         }
     return entity_dict
-     except google.api_core.exceptions.GoogleAPICallError as e:
+    except google.api_core.exceptions.GoogleAPICallError as e:
         print("Error from Google NLP API:", e)
 
  if not text:
