@@ -8,15 +8,16 @@ import numpy as np
 import json
 from google.oauth2 import service_account 
 
-# Load credentials from environment variable set by Streamlit Cloud
+
+
+
 credentials_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") 
 
-# Convert the JSON string into a dictionary
-credentials_dict = json.loads(credentials_json)
-
-# Now use the dictionary
-credentials = service_account.Credentials.from_service_account_info(credentials_dict)
-
+# Temporary Debugging
+print("---- Credentials from environment ----")
+print(credentials_json)  
+print(type(credentials_json))  # Check the type
+print("---- End credentials ----")
 
 
 
