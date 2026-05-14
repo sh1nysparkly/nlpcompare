@@ -85,5 +85,16 @@ All synced to Netlify.
 
 *Anna: add your other fixes / observations here so they don't get lost. Each entry: short heading + 1-3 lines on what's broken and the rough fix. Future Beans should be able to pick up any of these without back-channel context.*
 
--
+-not fixes just ideas: marking certain versions as the "winning" version for later like, tracking
+- what if the matrix was just like, side-by-side versions of the um, delta sidebar
+- can we add a favicon?
+- adding in keyword lists/highlighting as another reference layer
+- I want to add the slide-in sidebar ToC on the lefthand side to help validate tag structure/flow of the page
+- show a count of entities (might be informative to see if the count of unique entities goes up or down significantly with copy changes
+- it'd be cool if each container operated like a bootstrap container and I could arrange the blocks in a way that mimics the Figma layout (easier to do audits/comparisons)
+- what about a little </> button inside containers or at the page level so I can look at exactly what's passed to the API (could help w troubleshooting/diagnostics)
+- could the container heading/text automatically be inherited from the top text contained within?
+- as a stretch goal might be cool to use this entity and topic data to create like a topic map/IA
+- what if when I click on an entity in the sidebar it sort of highlights the relevant container(s)
+- what about colour-coding for entities? like in the NLP API? Like PLACE vs PERSON kinda thing?
 
