@@ -1764,19 +1764,15 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   font-weight: 700;
 }
 
-/* Floating "Showing V*X*" chip on the canvas, top-right of the blocks panel.
-   Tied to the active picker -- mirrors the tab-active treatment. */
+/* "Showing V*X*" chip -- sits above the blocks-panel content, right-aligned.
+   Tied to the active picker; mirrors the tab-active treatment so the chip,
+   header tab, and active picker all read with the same visual language. */
 .canvas-showing-chip {
-  position: sticky;
-  top: 8px;
-  float: right;
-  margin-top: -8px;
-  margin-right: 4px;
-  z-index: 6;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
+  margin: 0 0 8px auto;
   background: var(--primary-soft);
   border: 1px solid transparent;
   border-radius: 999px;
@@ -1785,6 +1781,7 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   font-weight: 700;
   color: var(--primary);
   pointer-events: none;
+  align-self: flex-end;
 }
 .canvas-showing-chip .csc-prefix {
   color: var(--primary);
@@ -1793,6 +1790,7 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   font-family: var(--font-display);
   letter-spacing: 0.02em;
 }
+.lab-blocks-panel { display: flex; flex-direction: column; }
 
 /* Transient toast for Commit confirmations (replaces the old status strip) */
 .lab-toast {
@@ -3896,6 +3894,8 @@ async function loadSelectedPage() {
     labRearrangedNlp = null;
     labIsRearranged = false;
     labSections = [];
+    // Dual picker: each new page starts with active=A pointing at V0, slot B blank.
+    resetPickersForNewPage();
     labSelectedBlockIndices.clear();
     labExpandedBlocks.clear();
     labContainerNlp = {};      // reset; populated by scoreContainersForLab below
@@ -5816,28 +5816,142 @@ async function scoreWip() {
 // arrows; pinned picker = muted greys. JS for click/arrow behaviour wires
 // in the next pass; for now the labels reflect the current single-version
 // state (slot A = baseline, slot B = right side / displayed Score).
-// Stubs for picker behaviour -- wired in the next pass. Clicks/arrows are
-// no-ops for now so the markup doesn't throw on interaction.
-function activatePicker(/* slot */) { /* TODO: next pass */ }
-function flipPicker(/* slot, dir */) { /* TODO: next pass */ }
+// ---- Dual active/pinned picker --------------------------------------------
+//
+// pickerCursors[slot] points into getVersionList() (V0 at 0, V0.5 at 1 if it
+// exists, then V1, V2…). -1 means "blank / dash" -- a deliberately-empty slot.
+// The active slot's version IS what's loaded in the canvas; the pinned slot
+// is the comparison reference (and the trigger for Commit overwrite when it
+// is blank). Active slot can't go blank -- arrows clamp at 0 on it.
+let pickerCursors = { a: 0, b: -1 };
+let activePickerSlot = "a";
 
-function buildVersionPickersHtml(baseLabel, rightLabel) {
-  const slotA = baseLabel || "&mdash;";
-  const slotB = rightLabel || "&mdash;";
-  return (
-    '<div class="version-pickers" id="version-pickers">' +
-      '<div class="version-picker active" id="version-picker-a" data-slot="a" onclick="activatePicker(\'a\')">' +
-        '<button class="vp-arrow" onclick="event.stopPropagation(); flipPicker(\'a\', -1)" aria-label="Previous version">&#9664;</button>' +
-        '<span class="vp-label">' + escapeHtml(slotA) + '</span>' +
-        '<button class="vp-arrow" onclick="event.stopPropagation(); flipPicker(\'a\', 1)" aria-label="Next version">&#9654;</button>' +
-      '</div>' +
-      '<div class="version-picker" id="version-picker-b" data-slot="b" onclick="activatePicker(\'b\')">' +
-        '<button class="vp-arrow" onclick="event.stopPropagation(); flipPicker(\'b\', -1)" aria-label="Previous version">&#9664;</button>' +
-        '<span class="vp-label">' + escapeHtml(slotB) + '</span>' +
-        '<button class="vp-arrow" onclick="event.stopPropagation(); flipPicker(\'b\', 1)" aria-label="Next version">&#9654;</button>' +
-      '</div>' +
-    '</div>'
-  );
+function resetPickersForNewPage() {
+  pickerCursors = { a: 0, b: -1 };
+  activePickerSlot = "a";
+}
+
+function activatePicker(slot) {
+  if (slot !== "a" && slot !== "b") return;
+  if (slot === activePickerSlot) return;
+
+  // Active can't be blank -- if user clicks an empty pinned slot, snap it
+  // to V0 so there's always something to render in the canvas.
+  if (pickerCursors[slot] < 0) pickerCursors[slot] = 0;
+
+  activePickerSlot = slot;
+
+  const list = getVersionList();
+  const ver = list[pickerCursors[slot]];
+  if (ver) {
+    loadVersionIntoLab(ver);
+    labVersionCursor = pickerCursors[slot];
+    syncLegacyPermIndex();
+  }
+  renderNlpDeltas();
+  renderCanvasShowingChip();
+}
+
+function flipPicker(slot, dir) {
+  const list = getVersionList();
+  if (!list.length) return;
+  if (slot !== "a" && slot !== "b") return;
+
+  const cur = pickerCursors[slot];
+  const newCur = cur + dir;
+  // Active slot: 0..N-1 (no blank). Pinned slot: -1..N-1.
+  const minCursor = slot === activePickerSlot ? 0 : -1;
+  const maxCursor = list.length - 1;
+  if (newCur < minCursor || newCur > maxCursor) return;
+
+  pickerCursors[slot] = newCur;
+
+  // Only the active slot's version drives the canvas.
+  if (slot === activePickerSlot && newCur >= 0) {
+    loadVersionIntoLab(list[newCur]);
+    labVersionCursor = newCur;
+    syncLegacyPermIndex();
+  }
+  renderNlpDeltas();
+  renderCanvasShowingChip();
+}
+
+function buildVersionPickersHtml() {
+  const list = getVersionList();
+  function labelFor(slot) {
+    const c = pickerCursors[slot];
+    if (c < 0 || !list[c]) return "&mdash;";
+    return escapeHtml(list[c].shortLabel);
+  }
+  function tooltipFor(slot) {
+    const c = pickerCursors[slot];
+    if (c < 0 || !list[c]) return "Empty -- click an arrow to pick a version";
+    return list[c].tooltip || list[c].dateLabel || "";
+  }
+  function prevDisabled(slot) {
+    const min = slot === activePickerSlot ? 0 : -1;
+    return pickerCursors[slot] <= min ? " disabled" : "";
+  }
+  function nextDisabled(slot) {
+    return pickerCursors[slot] >= list.length - 1 ? " disabled" : "";
+  }
+  function picker(slot) {
+    const active = slot === activePickerSlot ? " active" : "";
+    return (
+      '<div class="version-picker' + active + '" id="version-picker-' + slot +
+        '" data-slot="' + slot + '" onclick="activatePicker(\'' + slot + '\')"' +
+        ' title="' + escapeHtml(tooltipFor(slot)) + '">' +
+        '<button class="vp-arrow"' + prevDisabled(slot) +
+          ' onclick="event.stopPropagation(); flipPicker(\'' + slot + '\', -1)" aria-label="Previous version">&#9664;</button>' +
+        '<span class="vp-label">' + labelFor(slot) + '</span>' +
+        '<button class="vp-arrow"' + nextDisabled(slot) +
+          ' onclick="event.stopPropagation(); flipPicker(\'' + slot + '\', 1)" aria-label="Next version">&#9654;</button>' +
+      '</div>'
+    );
+  }
+  return '<div class="version-pickers" id="version-pickers">' + picker("a") + picker("b") + '</div>';
+}
+
+function renderCanvasShowingChip() {
+  const blocksPanel = document.querySelector(".lab-blocks-panel");
+  if (!blocksPanel) return;
+  let chip = document.getElementById("canvas-showing-chip");
+
+  const list = getVersionList();
+  const c = pickerCursors[activePickerSlot];
+  if (!list.length || c < 0 || !list[c]) {
+    if (chip) chip.remove();
+    return;
+  }
+  const ver = list[c];
+  const text = '<span class="csc-prefix">Showing</span> ' + escapeHtml(ver.shortLabel);
+  if (!chip) {
+    chip = document.createElement("div");
+    chip.id = "canvas-showing-chip";
+    chip.className = "canvas-showing-chip";
+    blocksPanel.insertBefore(chip, blocksPanel.firstChild);
+  }
+  chip.innerHTML = text;
+  chip.title = ver.tooltip || ver.dateLabel || "";
+}
+
+function showToast(message, duration) {
+  let toast = document.getElementById("lab-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "lab-toast";
+    toast.className = "lab-toast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  // restart the animation if the toast is already showing
+  toast.classList.remove("show");
+  void toast.offsetWidth;
+  toast.classList.add("show");
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(function () {
+    toast.classList.remove("show");
+  }, duration || 2800);
 }
 
 function renderNlpDeltas() {
@@ -5859,10 +5973,10 @@ function renderNlpDeltas() {
   let html = '<div class="scorecard">';
   // Scorecard header IS the dual picker. Pickers sit transparently inside the
   // header's surface-hover frame -- no own pill. Active cue is purely
-  // typographic (bold dark vs muted greys); labels/wiring populated by JS in
-  // the upcoming picker pass.
+  // typographic (bold dark vs muted greys). buildVersionPickersHtml reads
+  // pickerCursors + activePickerSlot directly, no args needed.
   html += '<div class="scorecard-header">';
-  html += buildVersionPickersHtml(baseLabel, rightLabel);
+  html += buildVersionPickersHtml();
   html += '</div>';
 
   const origCats = labOriginalNlp.categories || [];
@@ -5875,6 +5989,9 @@ function renderNlpDeltas() {
 
   html += '</div>';
   area.innerHTML = html;
+  // Canvas chip mirrors the active picker; refresh it whenever deltas re-render
+  // (auto-score, Test result, version flip, etc.).
+  renderCanvasShowingChip();
 }
 
 function renderCategoriesScorecard(origCats, newCats) {
@@ -6200,7 +6317,42 @@ function updateFlipperUI() {
   pickers.style.display = labSlug ? "" : "none";
 }
 
+// Detect Commit overwrite mode: active slot pinned to V0 or V0.5 while the
+// other slot is blank. Both populated, or active pointing at a regular Vn,
+// always means "save as new V*N*+1".
+function getCommitOverwriteTarget() {
+  const list = getVersionList();
+  if (!list.length) return null;
+
+  const activeCursor = pickerCursors[activePickerSlot];
+  if (activeCursor < 0) return null;
+
+  const pinnedSlot = activePickerSlot === "a" ? "b" : "a";
+  if (pickerCursors[pinnedSlot] >= 0) return null; // both populated -> new perm
+
+  const ver = list[activeCursor];
+  if (!ver) return null;
+  if (ver.kind === "original") return { kind: "v0", label: "V0 (live baseline)", perm: null };
+  if (ver.kind === "recipe")   return { kind: "v0.5", label: "V0.5 (UX recipe)", perm: ver.perm };
+  return null; // regular Vn pinned with empty other slot still means "save as new"
+}
+
 function showSavePermInput() {
+  // Overwrite path first -- skips the label input entirely.
+  const target = getCommitOverwriteTarget();
+  if (target) {
+    if (target.kind === "v0") {
+      // Schema migration deferred; flag clearly until is_live_baseline lands.
+      showToast("V0 overwrite needs a schema migration -- coming next pass. Falling back to 'save as new'.");
+      // fall through to the label-input flow below so the user can still save
+    } else if (target.kind === "v0.5") {
+      if (window.confirm("Overwrite " + target.label + "?\n\nThis replaces the saved UX recipe with the current arrangement (blocks, sections, and most recent NLP).")) {
+        commitOverwriteV05(target.perm);
+      }
+      return;
+    }
+  }
+
   const area = document.getElementById("save-perm-input");
   area.style.display = "";
   const input = document.getElementById("perm-label-input");
@@ -6210,6 +6362,57 @@ function showSavePermInput() {
     if (e.key === "Enter") { e.preventDefault(); commitSavePermutation(); input.removeEventListener("keydown", handler); }
     if (e.key === "Escape") { area.style.display = "none"; input.removeEventListener("keydown", handler); }
   });
+}
+
+async function commitOverwriteV05(existingPerm) {
+  if (!existingPerm || !existingPerm.id) {
+    showToast("Can't overwrite -- existing V0.5 row missing.");
+    return;
+  }
+  showToast("Overwriting V0.5...");
+
+  const trimmedBlocks = labBlocks.map(b => {
+    const slim = {
+      title: b.title,
+      body_text: b.body_text,
+      level: b.level,
+      word_count: b.word_count,
+      container_id: b.container_id,
+      container_label: b.container_label,
+      section_id: b.section_id,
+      edited: b.edited || false,
+      is_ghost: !!b.is_ghost,
+    };
+    if (b.edited) slim.original_html = b.original_html;
+    return slim;
+  });
+
+  const patch = {
+    blocks: trimmedBlocks,
+    sections: labSections,
+    nlp_result: labRearrangedNlp || existingPerm.nlp_result || null,
+  };
+
+  try {
+    await postgrest("/permutations?id=eq." + encodeURIComponent(existingPerm.id), {
+      method: "PATCH",
+      body: patch,
+    });
+    await loadPermutations();
+    // Keep the active picker pointing at V0.5 after the overwrite.
+    const list = getVersionList();
+    const v05Idx = list.findIndex(v => v.kind === "recipe");
+    if (v05Idx !== -1) {
+      pickerCursors[activePickerSlot] = v05Idx;
+      labVersionCursor = v05Idx;
+      syncLegacyPermIndex();
+    }
+    renderNlpDeltas();
+    showToast("V0.5 overwritten with current arrangement.");
+  } catch (e) {
+    console.error("commitOverwriteV05 error:", e);
+    showToast("Overwrite failed: " + e.message);
+  }
 }
 
 async function commitSavePermutation() {
@@ -6265,11 +6468,17 @@ async function commitSavePermutation() {
       syncLegacyPermIndex();
       updateFlipperUI();
     }
-    status.textContent = 'Saved "' + label + '" as ' +
-      (newIdx !== -1 ? list[newIdx].shortLabel : 'permutation') +
+    const shortLbl = newIdx !== -1 ? list[newIdx].shortLabel : 'permutation';
+    status.textContent = 'Saved "' + label + '" as ' + shortLbl +
       ' (' + labPermutations.length + ' total for this page).';
+    showToast('Saved as ' + shortLbl + ': "' + label + '"');
+    // After save: snap the active picker to the new perm; renderNlpDeltas
+    // refreshes the picker labels in the scorecard header.
+    if (newIdx !== -1) pickerCursors[activePickerSlot] = newIdx;
+    renderNlpDeltas();
   } catch (e) {
     status.textContent = "Save failed: " + e.message;
+    showToast("Save failed: " + e.message);
     console.error("commitSavePermutation error:", e);
   }
 }
