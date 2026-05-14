@@ -1764,15 +1764,14 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   font-weight: 700;
 }
 
-/* "Showing V*X*" chip -- sits above the blocks-panel content, right-aligned.
-   Tied to the active picker; mirrors the tab-active treatment so the chip,
-   header tab, and active picker all read with the same visual language. */
+/* "Showing V*X*" chip -- lives in panel-head-actions on the far right.
+   Mirrors the tab-active treatment so the chip, header tab, and active
+   picker all read with the same visual language. */
 .canvas-showing-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  margin: 0 0 8px auto;
   background: var(--primary-soft);
   border: 1px solid transparent;
   border-radius: 999px;
@@ -1781,7 +1780,6 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   font-weight: 700;
   color: var(--primary);
   pointer-events: none;
-  align-self: flex-end;
 }
 .canvas-showing-chip .csc-prefix {
   color: var(--primary);
@@ -1790,7 +1788,6 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   font-family: var(--font-display);
   letter-spacing: 0.02em;
 }
-.lab-blocks-panel { display: flex; flex-direction: column; }
 
 /* Transient toast for Commit confirmations (replaces the old status strip) */
 .lab-toast {
@@ -1843,6 +1840,20 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   border: 1px solid var(--primary);
   background: var(--primary);
   color: #fff;
+}
+.save-perm-input .save-perm-cancel {
+  padding: 4px 9px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+.save-perm-input .save-perm-cancel:hover {
+  background: var(--surface-hover);
+  border-color: var(--text-subtle);
+  color: var(--text);
 }
 
 /* Delta scorecard (dual-layer: categories + entities) */
@@ -2046,10 +2057,12 @@ footer {
           <div class="panel-head-actions">
             <button class="group-btn" id="btn-group-section" style="display:none;" onclick="openSlotPicker()">Group as section</button>
             <button class="clear-btn" id="btn-clear-selection" style="display:none;" onclick="clearBlockSelection()">Clear</button>
+            <button class="reset-btn" onclick="resetBlockOrder()" title="Restore block order, sections, and edits to the current baseline">Reset to baseline</button>
             <button class="outline-btn" onclick="collapseAllContainers()" title="Collapse all containers (page outline view)">Collapse all</button>
             <button class="outline-btn" onclick="expandAllContainers()" title="Expand all containers">Expand all</button>
             <button class="outline-btn" id="btn-snap-recipe" onclick="snapToRecipeOrder()" title="Reorder containers into UX recipe order and auto-group into recipe sections">Snap to recipe order</button>
-            <button class="reset-btn" onclick="resetBlockOrder()" title="Restore block order, sections, and edits to the current baseline">Reset to baseline</button>
+            <!-- "Showing V*X*" chip slots in here, rendered by renderCanvasShowingChip(). -->
+            <span id="canvas-showing-chip-slot"></span>
           </div>
         </div>
         <div class="slot-picker" id="slot-picker" style="display:none;"></div>
@@ -2085,6 +2098,7 @@ footer {
         <div class="save-perm-input" id="save-perm-input" style="display:none;">
           <input type="text" id="perm-label-input" placeholder="Label (e.g. moved FAQ above deals)..." maxlength="120" />
           <button onclick="commitSavePermutation()">Save</button>
+          <button class="save-perm-cancel" onclick="cancelSavePermInput()" aria-label="Cancel" title="Cancel">&times;</button>
         </div>
 
         <div id="nlp-delta-area"></div>
@@ -3910,7 +3924,11 @@ async function loadSelectedPage() {
     const slotCount = labRecipeSlots.length;
     const slotInfo = slotCount > 0 ? ", " + slotCount + " recipe slots ready" : "";
     const sourceLabel = blockSource === "curation" ? " (curation v12)" : " (HTML-parser fallback)";
-    info.textContent = "Loaded " + slug + ": " + blocks.length + " blocks, " + totalWords.toLocaleString() + " words" + slotInfo + sourceLabel + ".";
+    // Verbose "Loaded X blocks, Y words, Z recipe slots" lived under the page
+    // picker and Anna never used it -- silence it. Errors below still set
+    // info.textContent so loading/error states stay visible.
+    info.textContent = "";
+    showToast("Loaded " + slug + " (" + blocks.length + " blocks" + slotInfo + sourceLabel + ")");
 
     showWorkspace();
     loadPermutations();
@@ -5913,26 +5931,20 @@ function buildVersionPickersHtml() {
 }
 
 function renderCanvasShowingChip() {
-  const blocksPanel = document.querySelector(".lab-blocks-panel");
-  if (!blocksPanel) return;
-  let chip = document.getElementById("canvas-showing-chip");
-
+  const slot = document.getElementById("canvas-showing-chip-slot");
+  if (!slot) return;
   const list = getVersionList();
   const c = pickerCursors[activePickerSlot];
   if (!list.length || c < 0 || !list[c]) {
-    if (chip) chip.remove();
+    slot.innerHTML = "";
     return;
   }
   const ver = list[c];
-  const text = '<span class="csc-prefix">Showing</span> ' + escapeHtml(ver.shortLabel);
-  if (!chip) {
-    chip = document.createElement("div");
-    chip.id = "canvas-showing-chip";
-    chip.className = "canvas-showing-chip";
-    blocksPanel.insertBefore(chip, blocksPanel.firstChild);
-  }
-  chip.innerHTML = text;
-  chip.title = ver.tooltip || ver.dateLabel || "";
+  const tip = ver.tooltip || ver.dateLabel || "";
+  slot.innerHTML =
+    '<span class="canvas-showing-chip" title="' + escapeHtml(tip) + '">' +
+      '<span class="csc-prefix">Showing</span> ' + escapeHtml(ver.shortLabel) +
+    '</span>';
 }
 
 function showToast(message, duration) {
@@ -6413,6 +6425,13 @@ async function commitOverwriteV05(existingPerm) {
     console.error("commitOverwriteV05 error:", e);
     showToast("Overwrite failed: " + e.message);
   }
+}
+
+function cancelSavePermInput() {
+  const area = document.getElementById("save-perm-input");
+  const input = document.getElementById("perm-label-input");
+  if (input) input.value = "";
+  if (area) area.style.display = "none";
 }
 
 async function commitSavePermutation() {
