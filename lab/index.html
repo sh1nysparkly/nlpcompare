@@ -561,6 +561,23 @@ table.cat-table td.num { font-variant-numeric: tabular-nums; text-align: right; 
 }
 .btn-primary:hover { background: var(--btn-action-strong); box-shadow: var(--shadow-soft); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Tab-style button: soft primary tint bg + primary text. Used for "Load"
+   so it visually rhymes with the active tab in the header and doesn't
+   fight the dark-indigo Test button for primary-action attention. */
+.btn-tabstyle {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: 8px 16px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-tabstyle:hover { background: rgba(80, 72, 229, 0.14); }
+.btn-tabstyle:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-secondary {
   background: var(--surface);
   color: var(--primary);
@@ -1693,67 +1710,69 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
 /* Dual active/pinned version picker.
    Click a picker to "activate" it -- the active picker's arrows step versions
    and its currently-displayed version is what the canvas renders. The other
-   picker is the pinned comparison reference. */
+   picker is the pinned comparison reference. Both pickers live INSIDE one
+   shared pill (mirrors the tab-nav pattern visually) with transparent
+   backgrounds; the active state borrows the tab-active treatment so the cue
+   reads consistently with the rest of the app. */
 .version-pickers {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  align-items: stretch;
+  margin-top: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 3px;
+  gap: 2px;
 }
 .version-picker {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 2px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-top: 3px solid var(--border);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--r-md);
-  padding: 2px;
+  padding: 3px 4px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  min-width: 0;
+  transition: background 0.15s, color 0.15s;
 }
-.version-picker:hover { background: var(--surface-hover); }
+.version-picker:not(.active):hover { background: var(--surface-hover); }
 .version-picker.active {
-  border-color: var(--border-strong);
-  border-top-color: var(--btn-action);
-  background: var(--surface);
-}
-.version-picker.active::after {
-  content: "showing";
-  position: absolute;
-  /* visual cue lives on the canvas chip instead -- this is the affordance label */
+  background: var(--primary-soft);
 }
 .version-picker .vp-arrow {
   background: none;
   border: none;
   border-radius: var(--r-sm);
-  padding: 4px 7px;
+  padding: 4px 6px;
   font-size: 10px;
   cursor: pointer;
   color: var(--text-muted);
   line-height: 1;
   transition: color 0.15s, background 0.15s;
 }
-.version-picker .vp-arrow:hover { color: var(--btn-action); background: var(--surface-tint); }
-.version-picker .vp-arrow:disabled { opacity: 0.3; cursor: not-allowed; background: none; }
+.version-picker.active .vp-arrow { color: var(--primary); }
+.version-picker .vp-arrow:hover { color: var(--primary); background: rgba(80, 72, 229, 0.10); }
+.version-picker .vp-arrow:disabled { opacity: 0.3; cursor: not-allowed; background: none; color: var(--text-muted); }
 .version-picker .vp-label {
   flex: 1;
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--text);
+  color: var(--text-muted);
   min-width: 0;
   text-align: center;
-  padding: 0 6px;
+  padding: 0 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.version-picker:not(.active) .vp-label { color: var(--text-muted); }
+.version-picker.active .vp-label { color: var(--primary); }
 
 /* Floating "Showing V*X*" chip on the canvas, top-right of the blocks panel.
-   Tied to the active picker; mirrors its accent color. */
+   Tied to the active picker -- mirrors the tab-active treatment. */
 .canvas-showing-chip {
   position: sticky;
   top: 8px;
@@ -1764,20 +1783,19 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px 4px 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--btn-action);
+  padding: 4px 12px;
+  background: var(--primary-soft);
+  border: 1px solid transparent;
   border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
-  color: var(--text);
-  box-shadow: var(--shadow-soft);
+  font-weight: 700;
+  color: var(--primary);
   pointer-events: none;
 }
 .canvas-showing-chip .csc-prefix {
-  color: var(--text-muted);
+  color: var(--primary);
+  opacity: 0.7;
   font-weight: 500;
   font-family: var(--font-display);
   letter-spacing: 0.02em;
@@ -2055,7 +2073,7 @@ footer {
           <select id="lab-page-select">
             <option value="">-- Select a crawled page --</option>
           </select>
-          <button class="btn-primary" onclick="loadSelectedPage()">Load</button>
+          <button class="btn-tabstyle" onclick="loadSelectedPage()">Load</button>
         </div>
         <span class="info" id="lab-picker-info"></span>
       </div>
