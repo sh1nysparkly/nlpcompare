@@ -1664,18 +1664,26 @@ function blocksToHtml(blocks) {
 // container" panel. Per-container HTML hashes match the v12 baseline diagnostic,
 // so virtually every call hits the bridge cache -- ~zero extra NLP cost.
 
-async function scoreContainersForLab() {
+async function scoreContainersForLab(opts) {
   if (labContainerNlpInProgress) return;
   labContainerNlpInProgress = true;
+  opts = opts || {};
+  // Default to the baseline (V0) blocks + cache tag. When called from
+  // loadVersionIntoLab, the caller passes labBlocks + a version-specific tag
+  // so per-container entities reflect whichever version is currently loaded
+  // (container_ids are positional, so V0's c1 != V0.5's c1 in content).
+  const sourceBlocks = opts.blocks || labOriginalBlocks;
+  const versionTag = opts.versionTag || "v0-baseline";
+  // Clear stale results so the entities panel doesn't show prior version's
+  // attribution during the scoring window. The fresh map below populates it.
+  labContainerNlp = {};
+  renderBlockList();
   const fresh = {};
 
   try {
-    // Group labBlocks by container_id, preserving page order. Use labOriginalBlocks
-    // (not labBlocks) so per-container scores reflect the baseline state -- WIP
-    // scoring of containers is a separate feature; this is the baseline view.
     const order = [];
     const groups = {};
-    labOriginalBlocks.forEach(b => {
+    sourceBlocks.forEach(b => {
       if (!b.container_id) return;
       if (!groups[b.container_id]) {
         groups[b.container_id] = [];
@@ -1684,20 +1692,22 @@ async function scoreContainersForLab() {
       groups[b.container_id].push(b);
     });
 
-    // Score each container in parallel. Cache hits should be ~universal because
-    // the v12 baseline diagnostic already stored these content-hashes.
+    // Score each container in parallel. Use original_html when present (full
+    // fidelity); fall back to regenerateBlockHtml for trimmed-perm blocks that
+    // only carry title + body_text.
     const tasks = order.map(async (cid) => {
       const blocks = groups[cid];
-      // Same synthesis as blocksToHtml -- empty separator, no wrapper, no ghost
-      // filter (we want each container's standalone signal).
-      const html = blocks.map(b => b.original_html || "").filter(Boolean).join("");
+      const html = blocks
+        .map(b => b.original_html || regenerateBlockHtml(b))
+        .filter(Boolean)
+        .join("");
       if (!html) return [cid, { empty: true }];
       try {
         const result = await callNlpAnalyze(html, {
           contentType: "HTML",
           cacheMeta: {
             slug: labSlug,
-            source: "v12-current-state-baseline",
+            source: "lab-container:" + versionTag,
             crawl_date: labCrawlDate,
             label: "lab-container:" + (blocks[0].container_label || cid),
           },
@@ -1872,7 +1882,7 @@ async function loadSelectedPage() {
     labIsRearranged = false;
     labSections = [];
     // Dual picker: each new page starts with active=A pointing at V0, slot B blank.
-    resetPickersForNewPage();
+    resetPickersToDefault();
     labSelectedBlockIndices.clear();
     labExpandedBlocks.clear();
     labContainerNlp = {};      // reset; populated by scoreContainersForLab below
@@ -1894,7 +1904,7 @@ async function loadSelectedPage() {
     showToast("Loaded " + slug + " (" + blocks.length + " blocks" + slotInfo + sourceLabel + ")");
 
     showWorkspace();
-    loadPermutations();
+    await loadPermutations();
     // Auto-score original: cache hit is instant, miss costs one API call (then cached)
     scoreOriginal();
     // Per-container scoring runs in parallel; cache hits are universal post-v12
@@ -3394,6 +3404,10 @@ function resetBlockOrder() {
   // "throw away your edits and return to the original state".
   labVersionCursor = 0;
   labPermIndex = -1;
+  // Pickers + chip read from pickerCursors/activePickerSlot, not labVersionCursor,
+  // so reset those too -- otherwise the chip and pickers keep displaying whichever
+  // version was active before the reset.
+  resetPickersToDefault();
   renderBlockList();
   renderNlpDeltas();
   updateFlipperUI();
@@ -3514,7 +3528,7 @@ async function scoreWip() {
 let pickerCursors = { a: 0, b: -1 };
 let activePickerSlot = "a";
 
-function resetPickersForNewPage() {
+function resetPickersToDefault() {
   pickerCursors = { a: 0, b: -1 };
   activePickerSlot = "a";
 }
@@ -3983,6 +3997,16 @@ function loadVersionIntoLab(ver) {
   labIsRearranged = blocksDifferFromOriginal();
   renderBlockList();
   renderNlpDeltas();
+  // Re-score per-container entities against the loaded version. Container_ids
+  // are positional (c0, c1, ...), so the same id can hold different content in
+  // V0 vs V0.5 vs saved perms -- without re-scoring, the entities panel shows
+  // baseline V0 attribution under whatever blocks are actually displayed.
+  const versionTag =
+    ver.kind === "original" ? "v0-baseline" :
+    ver.kind === "recipe"   ? "v0.5-ux-baseline" :
+    ver.perm                ? ("perm-" + (ver.perm.id || ver.perm.label || "unknown")) :
+                              "v0-baseline";
+  scoreContainersForLab({ blocks: labBlocks, versionTag: versionTag });
   const status = document.getElementById("score-status");
   if (status) {
     const name = ver.perm ? (ver.perm.label || ver.shortLabel) : "original";
@@ -3991,13 +4015,16 @@ function loadVersionIntoLab(ver) {
 }
 
 function updateFlipperUI() {
-  // Stubbed during redesign: old single-flipper element was replaced with the
-  // dual active/pinned picker (#version-pickers). The new picker has its own
-  // render function (renderVersionPickers) wired in the next pass. Keeping this
-  // as a no-op so legacy callsites don't break before that rewires.
   const pickers = document.getElementById("version-pickers");
   if (!pickers) return;
-  pickers.style.display = labSlug ? "" : "none";
+  if (!labSlug) { pickers.style.display = "none"; return; }
+  pickers.style.display = "";
+  // Rebuild picker labels from current version list + cursor state.
+  // buildVersionPickersHtml returns a full wrapper div; swap it in.
+  const tmp = document.createElement("div");
+  tmp.innerHTML = buildVersionPickersHtml();
+  const fresh = tmp.firstElementChild;
+  if (fresh) pickers.replaceWith(fresh);
 }
 
 // Detect Commit overwrite mode: active slot pinned to V0 or V0.5 while the
@@ -4113,9 +4140,11 @@ async function commitSavePermutation() {
   const area = document.getElementById("save-perm-input");
   const status = document.getElementById("score-status");
 
-  const rawBlocks = labPermIndex === -1 ? labBlocks : labPermutations[labPermIndex].blocks;
-  const sourceSections = labPermIndex === -1 ? labSections : (labPermutations[labPermIndex].sections || []);
-  const sourceNlp = labPermIndex === -1 ? labRearrangedNlp : (labPermutations[labPermIndex].nlp_result || null);
+  // Always save from the live editor state -- labBlocks/labSections reflect the
+  // user's current work regardless of which version was loaded as the starting point.
+  const rawBlocks = labBlocks;
+  const sourceSections = labSections;
+  const sourceNlp = labRearrangedNlp;
 
   const trimmedBlocks = rawBlocks.map(b => {
     const slim = {
