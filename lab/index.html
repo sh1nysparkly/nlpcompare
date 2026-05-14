@@ -1708,19 +1708,16 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
 }
 
 /* Dual active/pinned version picker.
-   Single shared pill (mirrors the old single-flipper bar). Both pickers sit
-   transparently inside it. The "active" cue is *purely typographic* --
-   bold dark label + dark arrows on the active picker, muted greys on the
-   pinned one. No fill, no border accent; the pill is the only frame. */
+   Lives INSIDE .scorecard-header -- the header IS the picker bar. No own
+   background or border; the header's surface-hover frame is the only frame.
+   "Active" cue is purely typographic: bold dark label + dark arrows on the
+   active picker, muted greys on the pinned one. */
 .version-pickers {
   display: flex;
   align-items: center;
-  margin-top: 10px;
-  background: var(--surface-hover);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-md);
-  padding: 3px;
+  flex: 1;
   gap: 0;
+  margin: 0;
 }
 .version-picker {
   flex: 1;
@@ -2084,20 +2081,8 @@ footer {
           <div class="score-status" id="score-status" style="display:none;"></div>
         </div>
 
-        <!-- Dual active/pinned picker. Either slot can be empty (dash).
-             Click a slot to activate it; the active one drives the canvas. -->
-        <div class="version-pickers" id="version-pickers" style="display:none;">
-          <div class="version-picker active" id="version-picker-a" data-slot="a" onclick="activatePicker('a')">
-            <button class="vp-arrow" onclick="event.stopPropagation(); flipPicker('a', -1)" aria-label="Previous version">&#9664;</button>
-            <span class="vp-label">&mdash;</span>
-            <button class="vp-arrow" onclick="event.stopPropagation(); flipPicker('a', 1)" aria-label="Next version">&#9654;</button>
-          </div>
-          <div class="version-picker" id="version-picker-b" data-slot="b" onclick="activatePicker('b')">
-            <button class="vp-arrow" onclick="event.stopPropagation(); flipPicker('b', -1)" aria-label="Previous version">&#9664;</button>
-            <span class="vp-label">&mdash;</span>
-            <button class="vp-arrow" onclick="event.stopPropagation(); flipPicker('b', 1)" aria-label="Next version">&#9654;</button>
-          </div>
-        </div>
+        <!-- Pickers live inside the scorecard header, rendered by renderNlpDeltas().
+             See: build of .scorecard-header in that function. -->
 
         <div class="save-perm-input" id="save-perm-input" style="display:none;">
           <input type="text" id="perm-label-input" placeholder="Label (e.g. moved FAQ above deals)..." maxlength="120" />
@@ -5826,6 +5811,35 @@ async function scoreWip() {
   }
 }
 
+// Renders the dual active/pinned picker. Lives inside .scorecard-header so
+// the header IS the picker bar. Active picker = bold dark label + dark
+// arrows; pinned picker = muted greys. JS for click/arrow behaviour wires
+// in the next pass; for now the labels reflect the current single-version
+// state (slot A = baseline, slot B = right side / displayed Score).
+// Stubs for picker behaviour -- wired in the next pass. Clicks/arrows are
+// no-ops for now so the markup doesn't throw on interaction.
+function activatePicker(/* slot */) { /* TODO: next pass */ }
+function flipPicker(/* slot, dir */) { /* TODO: next pass */ }
+
+function buildVersionPickersHtml(baseLabel, rightLabel) {
+  const slotA = baseLabel || "&mdash;";
+  const slotB = rightLabel || "&mdash;";
+  return (
+    '<div class="version-pickers" id="version-pickers">' +
+      '<div class="version-picker active" id="version-picker-a" data-slot="a" onclick="activatePicker(\'a\')">' +
+        '<button class="vp-arrow" onclick="event.stopPropagation(); flipPicker(\'a\', -1)" aria-label="Previous version">&#9664;</button>' +
+        '<span class="vp-label">' + escapeHtml(slotA) + '</span>' +
+        '<button class="vp-arrow" onclick="event.stopPropagation(); flipPicker(\'a\', 1)" aria-label="Next version">&#9654;</button>' +
+      '</div>' +
+      '<div class="version-picker" id="version-picker-b" data-slot="b" onclick="activatePicker(\'b\')">' +
+        '<button class="vp-arrow" onclick="event.stopPropagation(); flipPicker(\'b\', -1)" aria-label="Previous version">&#9664;</button>' +
+        '<span class="vp-label">' + escapeHtml(slotB) + '</span>' +
+        '<button class="vp-arrow" onclick="event.stopPropagation(); flipPicker(\'b\', 1)" aria-label="Next version">&#9654;</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
 function renderNlpDeltas() {
   const area = document.getElementById("nlp-delta-area");
 
@@ -5843,7 +5857,12 @@ function renderNlpDeltas() {
   const headerLabel = rightLabel ? (baseLabel + " → " + rightLabel) : (baseLabel + " (no comparison yet)");
 
   let html = '<div class="scorecard">';
-  html += '<div class="scorecard-header"><h4>' + escapeHtml(headerLabel) + '</h4>';
+  // Scorecard header IS the dual picker. Pickers sit transparently inside the
+  // header's surface-hover frame -- no own pill. Active cue is purely
+  // typographic (bold dark vs muted greys); labels/wiring populated by JS in
+  // the upcoming picker pass.
+  html += '<div class="scorecard-header">';
+  html += buildVersionPickersHtml(baseLabel, rightLabel);
   html += '</div>';
 
   const origCats = labOriginalNlp.categories || [];
