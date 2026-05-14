@@ -576,11 +576,15 @@ table.cat-table td.num { font-variant-numeric: tabular-nums; text-align: right; 
 .btn-secondary:hover { background: var(--primary-soft); border-color: var(--primary); }
 .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Block list */
+/* Block list -- always grid so the right column (page picker + score)
+   is visible even before a page is loaded. */
 .lab-workspace {
-  display: none;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
 }
 .lab-workspace.active {
+  /* same shape; .active still added by JS for backward compat */
   display: grid;
   grid-template-columns: 1fr 380px;
   gap: 20px;
@@ -590,6 +594,7 @@ table.cat-table td.num { font-variant-numeric: tabular-nums; text-align: right; 
      layout-overflow defence. */
 }
 @media (max-width: 900px) {
+  .lab-workspace,
   .lab-workspace.active { grid-template-columns: 1fr; }
 }
 
