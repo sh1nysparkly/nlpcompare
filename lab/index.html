@@ -643,9 +643,9 @@ function renderFullAnalysisResults(result, container) {
 
 // State
 let labBlocks = [];        // current block order [{level, title, body_text, word_count}]
-let labOriginalBlocks = []; // baseline blocks (reset + score comparison target); mutated by setAsBaseline()
-let labOriginalSections = []; // baseline sections, parallel to labOriginalBlocks; mutated by setAsBaseline()
-let labOriginalNlp = null;  // NLP of baseline (categories + entities); mutated by setAsBaseline()
+let labOriginalBlocks = []; // baseline blocks (reset + score comparison target)
+let labOriginalSections = []; // baseline sections, parallel to labOriginalBlocks
+let labOriginalNlp = null;  // NLP of baseline (categories + entities)
 let labRearrangedNlp = null; // NLP result for WIP arrangement (categories + entities)
 let labIsRearranged = false;
 let labTemplateType = null; // template_type of currently loaded page (e.g. "top-level-lp")
@@ -1911,10 +1911,7 @@ async function loadSelectedPage() {
 
 function showWorkspace() {
   document.getElementById("lab-workspace").classList.add("active");
-  // Score + Set as Baseline are always-enabled in the new model -- click them
-  // whenever; internal guards handle the "score first" case for setAsBaseline.
   document.getElementById("btn-score-wip").disabled = false;
-  // btn-set-baseline removed in redesign -- legacy assignment no-ops safely.
   renderBlockList();
   renderNlpDeltas();
 }
@@ -3381,43 +3378,8 @@ function onDragEnd(e) {
   resetDragState();
 }
 
-// Pin the current WIP arrangement as the comparison anchor for future Score WIP runs.
-// Requires Score WIP to have been run first (we re-use labRearrangedNlp as the new baseline NLP).
-// After this:
-//   labOriginalBlocks   ← current labBlocks (deep copy)
-//   labOriginalSections ← current labSections (deep copy)
-//   labOriginalNlp      ← labRearrangedNlp
-//   labRearrangedNlp    ← null
-//   labIsRearranged     ← false (WIP is now equal to baseline)
-// "Reset to baseline" then restores to this pinned state instead of the page-load state.
-function setAsBaseline() {
-  if (!labRearrangedNlp) {
-    document.getElementById("score-status").textContent =
-      "Score first — we use its NLP result as the new baseline NLP.";
-    return;
-  }
-  labOriginalBlocks = labBlocks.map(b => ({ ...b }));
-  labOriginalSections = labSections.map(s => ({ ...s }));
-  labOriginalNlp = labRearrangedNlp;
-  labRearrangedNlp = null;
-  labIsRearranged = false;
-  // Baseline label in the delta header: until the user saves this state as a
-  // named permutation, label it "Pinned" -- distinct from V0 (original) so the
-  // header shows the user knows which anchor they're comparing against.
-  labBaselineVersionRef = { kind: "pinned", shortLabel: "Pinned" };
-  // Both buttons stay enabled (always-on model). Score will re-fire whenever
-  // the user wants a fresh delta from the new anchor.
-  document.getElementById("btn-score-wip").disabled = false;
-  // btn-set-baseline removed in redesign -- legacy assignment no-ops safely.
-  renderNlpDeltas();
-  renderBlockList();
-  document.getElementById("score-status").textContent =
-    "Baseline pinned to current arrangement. Score delta is now from this anchor.";
-}
-
 function resetBlockOrder() {
-  // Restore to current baseline (which may be page-load state OR a user-pinned baseline
-  // via setAsBaseline). Preserves section_id from the baseline; same for labSections.
+  // Restore to the page-load baseline.
   labBlocks = labOriginalBlocks.map(b => ({ ...b }));
   labSections = labOriginalSections.map(s => ({ ...s }));
   labIsRearranged = false;
@@ -3686,7 +3648,9 @@ function renderNlpDeltas() {
   // V# header: <baseline V#> → <right-side V#>. Right side is the V# of the
   // version that was last scored (e.g. "V0 → V2" after Score lands). When
   // there's no Score result yet, header shows just the baseline.
-  const baseLabel = (labBaselineVersionRef && labBaselineVersionRef.shortLabel) || "V0";
+  // Baseline is hardcoded to V0 for now; the dual picker's left slot will
+  // drive this once the picker → header wiring lands.
+  const baseLabel = "V0";
   const rightLabel = hasWip ? (labRearrangedNlpVersionLabel || "Scored") : null;
   const headerLabel = rightLabel ? (baseLabel + " → " + rightLabel) : (baseLabel + " (no comparison yet)");
 
@@ -3847,9 +3811,6 @@ let labVersionCursor = -1;
 //   -1 = viewing WIP, original, or recipe (anything that isn't a saved-perm row directly)
 //   0..N-1 = index into labPermutations of the currently-viewed regular perm
 let labPermIndex = -1;
-// Tracks which version is currently acting as the comparison baseline (V0 by default;
-// changes when setAsBaseline is called). Drives the left-hand label of the delta header.
-let labBaselineVersionRef = { kind: 'original', shortLabel: 'V0' };
 // Label of the version that labRearrangedNlp came from -- drives the right-hand
 // side of the delta header. Set when Score finishes, cleared/updated when Save
 // lands. Empty string -> generic "Scored" placeholder.
@@ -3933,9 +3894,24 @@ function getVersionList() {
     perm: null,
   });
 
-  // V1, V2, ... = saved perms in chronological order (loadPermutations
-  // already returns ASC by created_at).
-  labPermutations.forEach((p, i) => {
+  // V0.5 = the UX-proposed baseline state for this page. Stored as a permutation
+  // row with is_snap_target=true (legacy column name; the concept is "UX baseline",
+  // not the dead snap-to-recipe feature). Conventionally one per page.
+  const recipe = labPermutations.find(p => p.is_snap_target);
+  if (recipe) {
+    list.push({
+      kind: "recipe",
+      shortLabel: "V0.5",
+      dateLabel: "V0.5 — " + formatVersionDate(recipe.created_at),
+      tooltip: recipe.label || "UX baseline",
+      perm: recipe,
+    });
+  }
+
+  // V1, V2, ... = experimental perms in chronological order (loadPermutations
+  // already returns ASC by created_at). V0.5 is excluded -- it's special.
+  const regular = labPermutations.filter(p => !p.is_snap_target);
+  regular.forEach((p, i) => {
     list.push({
       kind: "perm",
       shortLabel: "V" + (i + 1),
