@@ -3650,53 +3650,54 @@ function showToast(message, duration) {
   }, duration || 2800);
 }
 
+// Resolve the NLP data + label for a single column. Each column maps directly
+// to its picker slot (LEFT = slot "a", RIGHT = slot "b"). The "active vs pinned"
+// distinction only affects whether we use the freshly-scored WIP result (when
+// the slot is active AND its latest score is for this version) vs the saved
+// nlp_result on the perm row.
+function getColumnNlp(slot) {
+  const cursor = pickerCursors[slot];
+  if (cursor < 0) return { nlp: labOriginalNlp, label: "V0" };
+  const list = getVersionList();
+  const ver = list[cursor];
+  if (!ver) return { nlp: labOriginalNlp, label: "V0" };
+
+  // Active slot whose latest WIP score is for THIS version -- reflects the
+  // user's current edits on top of the loaded version.
+  if (slot === activePickerSlot && labRearrangedNlp &&
+      labRearrangedNlpVersionLabel &&
+      labRearrangedNlpVersionLabel.indexOf(ver.shortLabel) === 0) {
+    return { nlp: labRearrangedNlp, label: labRearrangedNlpVersionLabel };
+  }
+
+  if (ver.kind === "original") return { nlp: labOriginalNlp, label: ver.shortLabel };
+  if (ver.perm && ver.perm.nlp_result) {
+    return { nlp: ver.perm.nlp_result, label: ver.shortLabel };
+  }
+  // Perm exists but has no stored NLP (saved without scoring first). Fall back
+  // to V0 so the delta still renders, but flag it in the label so the user
+  // knows why this column looks like V0 instead of the version they picked.
+  return { nlp: labOriginalNlp, label: "V0 (" + ver.shortLabel + " not scored)" };
+}
+
 function renderNlpDeltas() {
   const area = document.getElementById("nlp-delta-area");
 
-  // Derive baseline from the PINNED picker (the not-active slot). Active picker
-  // = WIP / right column; pinned picker = baseline / left column. This is what
-  // makes V7 vs new-version comparisons actually show V7's numbers in the left
-  // column instead of always-V0.
-  const pinnedSlot = activePickerSlot === "a" ? "b" : "a";
-  const pinnedCursor = pickerCursors[pinnedSlot];
-  let baselineNlp = null;
-  let baseLabel = "V0";
-  if (pinnedCursor >= 0) {
-    const list = getVersionList();
-    const pinnedVer = list[pinnedCursor];
-    if (pinnedVer) {
-      if (pinnedVer.kind === "original") {
-        baselineNlp = labOriginalNlp;
-        baseLabel = "V0";
-      } else if (pinnedVer.perm) {
-        if (pinnedVer.perm.nlp_result) {
-          baselineNlp = pinnedVer.perm.nlp_result;
-          baseLabel = pinnedVer.shortLabel;
-        } else {
-          // Perm was saved without a stored NLP result; fall back to V0 so the
-          // delta still renders, and surface the fallback in the label.
-          baselineNlp = labOriginalNlp;
-          baseLabel = "V0 (no saved NLP on " + pinnedVer.shortLabel + ")";
-        }
-      }
-    }
-  } else {
-    // Pinned slot is blank → default to V0.
-    baselineNlp = labOriginalNlp;
-    baseLabel = "V0";
-  }
-
-  if (!baselineNlp) {
+  // LEFT column = slot "a", RIGHT column = slot "b". Direct mapping -- cycling
+  // either picker changes its own column's data, not the other side's.
+  const left = getColumnNlp("a");
+  const right = getColumnNlp("b");
+  if (!left.nlp && !right.nlp) {
     area.innerHTML = "";
     return;
   }
 
-  const hasWip = !!labRearrangedNlp;
-  // V# header: <baseline V#> → <right-side V#>. Right side is the V# of the
-  // version that was last scored (e.g. "V0 → V2" after Score lands). When
-  // there's no Score result yet, header shows just the baseline.
-  const rightLabel = hasWip ? (labRearrangedNlpVersionLabel || "Scored") : null;
-  const headerLabel = rightLabel ? (baseLabel + " → " + rightLabel) : (baseLabel + " (no comparison yet)");
+  // V# header: "<left V#> → <right V#>" -- both labels come from the picker
+  // slots directly so the header always reflects what's visually in each
+  // picker.
+  const headerLabel = (left.nlp && right.nlp)
+    ? (left.label + " → " + right.label)
+    : (left.label || right.label || "V0");
 
   let html = '<div class="scorecard">';
   // Scorecard header IS the dual picker. Pickers sit transparently inside the
@@ -3707,12 +3708,12 @@ function renderNlpDeltas() {
   html += buildVersionPickersHtml();
   html += '</div>';
 
-  const origCats = baselineNlp.categories || [];
-  const newCats = hasWip ? (labRearrangedNlp.categories || []) : null;
+  const origCats = left.nlp ? (left.nlp.categories || []) : [];
+  const newCats = right.nlp ? (right.nlp.categories || []) : null;
   html += renderCategoriesScorecard(origCats, newCats);
 
-  const origEnts = baselineNlp.entities || [];
-  const newEnts = hasWip ? (labRearrangedNlp.entities || []) : null;
+  const origEnts = left.nlp ? (left.nlp.entities || []) : [];
+  const newEnts = right.nlp ? (right.nlp.entities || []) : null;
   html += renderEntitiesScorecard(origEnts, newEnts);
 
   html += '</div>';
