@@ -14,7 +14,7 @@
   color-scheme: light;
 
   /* Surfaces */
-  --bg: #f9fafb;
+  --bg: #ffffff;
   --surface: #ffffff;
   --surface-hover: #f8fafc;
   --surface-tint: #f1f5f9;
@@ -33,6 +33,10 @@
   --primary: #5048e5;
   --primary-soft: rgba(80, 72, 229, 0.08);
   --primary-strong: #3f37d4;
+  /* Action buttons -- desaturated indigo, separate from --primary so brand
+     accents (tab-active, focus rings, category chips) keep their vibrance. */
+  --btn-action: #5560a3;
+  --btn-action-strong: #454e85;
   --positive: #10b981;
   --negative: #ef4444;
   --warning: #f59e0b;
@@ -64,10 +68,15 @@ body {
 .wrapper { max-width: 1240px; margin: 0 auto; padding: 24px 28px 60px; }
 
 header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 18px;
   margin-bottom: 24px;
 }
+.header-text { min-width: 0; flex: 1; }
 header h1 {
   margin: 0 0 4px;
   font-size: 22px;
@@ -81,16 +90,16 @@ header p {
   font-size: 13px;
 }
 
-/* Tab navigation */
+/* Tab navigation -- lives inside <header> on the right */
 .tab-nav {
   display: flex;
   gap: 4px;
-  margin-bottom: 24px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   padding: 4px;
   width: fit-content;
+  flex-shrink: 0;
 }
 .tab-btn {
   padding: 7px 16px;
@@ -539,7 +548,7 @@ table.cat-table td.num { font-variant-numeric: tabular-nums; text-align: right; 
 }
 
 .btn-primary {
-  background: var(--primary);
+  background: var(--btn-action);
   color: #fff;
   border: none;
   border-radius: var(--r-md);
@@ -550,7 +559,7 @@ table.cat-table td.num { font-variant-numeric: tabular-nums; text-align: right; 
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s;
 }
-.btn-primary:hover { background: var(--primary-strong); box-shadow: var(--shadow-soft); }
+.btn-primary:hover { background: var(--btn-action-strong); box-shadow: var(--shadow-soft); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-secondary {
   background: var(--surface);
@@ -585,29 +594,20 @@ table.cat-table td.num { font-variant-numeric: tabular-nums; text-align: right; 
 }
 
 .lab-blocks-panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  padding: 14px 16px 16px;
-  box-shadow: var(--shadow-soft);
-  /* Grid items default to min-width: auto (= min-content), which lets wide
-     internal content (long unbreakable words, dense entity chips, etc.) push
-     the 1fr track wider than its allocation, shoving the 380px score panel
-     off-screen. Force min-width:0 so the column actually obeys 1fr. */
+  /* Canvas-feel: no outer wrapper border / background, blocks float on page bg.
+     Cards inside have their own borders + shadows. */
+  background: transparent;
+  border: none;
+  padding: 0;
   min-width: 0;
 }
-/* Sticky wrapper: keeps the panel-head row AND the slot picker (when open)
-   pinned to the top while scrolling long block lists. */
 .panel-sticky {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: var(--surface);
-  margin-left: -16px;
-  margin-right: -16px;
-  padding: 10px 16px 12px;
+  background: var(--bg);
+  padding: 8px 0 12px;
   border-bottom: 1px solid var(--border-soft);
-  border-radius: var(--r-xl) var(--r-xl) 0 0;
 }
 .lab-blocks-panel .panel-head {
   display: flex;
@@ -1647,81 +1647,160 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   margin-left: 8px;
 }
 
-/* Bottom row: version flipper (left third) + save button (right third).
-   space-between gives them the breathing room Anna asked for. */
-.score-bottom-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 10px;
-  flex-wrap: wrap;
+/* Panel sections inside the score panel (page picker, score block, etc.) */
+.panel-section { margin-bottom: 18px; }
+.panel-section:last-child { margin-bottom: 0; }
+.panel-section + .panel-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
 }
-.score-bottom-row:empty { display: none; }
+.page-picker-section h3 { margin-bottom: 8px; }
+.page-picker-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+#lab-page-select {
+  flex: 1;
+  font-family: var(--font-display);
+  font-size: 13px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-md) !important;
+  color: var(--text);
+  min-width: 0;
+}
+#lab-page-select:focus {
+  outline: none;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+#lab-picker-info {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  min-height: 1em;
+}
 
-/* Version flipper */
-.version-flipper {
+/* Dual active/pinned version picker.
+   Click a picker to "activate" it -- the active picker's arrows step versions
+   and its currently-displayed version is what the canvas renders. The other
+   picker is the pinned comparison reference. */
+.version-pickers {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.version-picker {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-top: 0;
-  background: var(--surface-hover);
-  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--border);
   border-radius: var(--r-md);
   padding: 2px;
-  width: fit-content;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
 }
-.version-flipper button {
+.version-picker:hover { background: var(--surface-hover); }
+.version-picker.active {
+  border-color: var(--border-strong);
+  border-top-color: var(--btn-action);
+  background: var(--surface);
+}
+.version-picker.active::after {
+  content: "showing";
+  position: absolute;
+  /* visual cue lives on the canvas chip instead -- this is the affordance label */
+}
+.version-picker .vp-arrow {
   background: none;
   border: none;
   border-radius: var(--r-sm);
-  padding: 3px 7px;
-  font-size: 11px;
+  padding: 4px 7px;
+  font-size: 10px;
   cursor: pointer;
   color: var(--text-muted);
   line-height: 1;
-  transition: all 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
-.version-flipper button:hover { color: var(--primary); background: var(--primary-soft); }
-.version-flipper button:disabled { opacity: 0.3; cursor: not-allowed; background: none; }
-.version-flipper .version-label {
+.version-picker .vp-arrow:hover { color: var(--btn-action); background: var(--surface-tint); }
+.version-picker .vp-arrow:disabled { opacity: 0.3; cursor: not-allowed; background: none; }
+.version-picker .vp-label {
+  flex: 1;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: var(--text);
-  min-width: 60px;
+  min-width: 0;
   text-align: center;
   padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.permutation-actions {
-  display: flex;
+.version-picker:not(.active) .vp-label { color: var(--text-muted); }
+
+/* Floating "Showing V*X*" chip on the canvas, top-right of the blocks panel.
+   Tied to the active picker; mirrors its accent color. */
+.canvas-showing-chip {
+  position: sticky;
+  top: 8px;
+  float: right;
+  margin-top: -8px;
+  margin-right: 4px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  margin-top: 0;
-  flex-wrap: wrap;
-}
-.permutation-actions button {
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 500;
-  padding: 6px 11px;
-  border-radius: var(--r-md);
-  cursor: pointer;
-  border: 1px solid var(--border-strong);
+  padding: 4px 10px 4px 8px;
   background: var(--surface);
-  color: var(--text-muted);
-  transition: all 0.15s;
-}
-.permutation-actions button:hover { background: var(--surface-hover); color: var(--text); border-color: var(--text-subtle); }
-.permutation-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
-.permutation-actions .btn-save-perm {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--btn-action);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   font-weight: 600;
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  pointer-events: none;
 }
-.permutation-actions .btn-save-perm:hover { background: var(--primary-strong); color: #fff; border-color: var(--primary-strong); }
+.canvas-showing-chip .csc-prefix {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+}
+
+/* Transient toast for Commit confirmations (replaces the old status strip) */
+.lab-toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: var(--text);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 18px;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 1000;
+  max-width: 80vw;
+}
+.lab-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
 .save-perm-input {
   display: flex;
   gap: 6px;
@@ -1928,36 +2007,20 @@ footer {
 <div class="wrapper">
 
 <header>
-  <h1>Signal Coherence Dashboard</h1>
-  <p>Rearrange page sections, see how entity salience and topical categories shift. NLP via Google Cloud (results cached in Supabase).</p>
+  <div class="header-text">
+    <h1>Signal Coherence Dashboard</h1>
+    <p>Rearrange page sections, see how entity salience and topical categories shift. NLP via Google Cloud (results cached in Supabase).</p>
+  </div>
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="tab-lab" onclick="switchTab('tab-lab')">Rearrangement Lab</button>
+    <button class="tab-btn" data-tab="tab-scorer" onclick="switchTab('tab-scorer')">NLP Scorer</button>
+  </div>
 </header>
 
 <div id="errors"></div>
 
-<div class="tab-nav">
-  <button class="tab-btn active" data-tab="tab-lab" onclick="switchTab('tab-lab')">Rearrangement Lab</button>
-  <button class="tab-btn" data-tab="tab-scorer" onclick="switchTab('tab-scorer')">NLP Scorer</button>
-</div>
-
 <!-- ============ TAB: Rearrangement Lab ============ -->
 <div id="tab-lab" class="tab-content active">
-  <div class="lab-intro">
-    Pick a crawled page, parse it into content blocks, and drag them to test different arrangements. NLP results cached in Supabase -- same arrangement, free forever.
-  </div>
-
-  <div class="lab-input-area">
-    <div class="page-picker">
-      <h3>Load a page</h3>
-      <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
-        <select id="lab-page-select" style="flex:1; padding:8px 12px; border:1px solid #d0d0d0; border-radius:6px; font-size:13px; background:#fff;">
-          <option value="">-- Select a crawled page --</option>
-        </select>
-        <button class="btn-primary" onclick="loadSelectedPage()">Load page</button>
-      </div>
-      <span class="info" id="lab-picker-info" style="font-size:12px; color:#888;"></span>
-    </div>
-  </div>
-
   <div class="lab-workspace" id="lab-workspace">
     <div class="lab-blocks-panel">
       <div class="panel-sticky">
@@ -1981,36 +2044,49 @@ footer {
     </div>
 
     <div class="lab-score-panel">
-      <h3>Score</h3>
-
-      <div class="score-actions">
-        <button class="btn-primary" id="btn-score-wip" onclick="scoreWip()" title="Score the current arrangement of blocks. Result becomes the right side of the delta header.">Score</button>
-        <button class="btn-secondary" id="btn-set-baseline" onclick="setAsBaseline()" title="Pin the most recent Score as the new comparison anchor. Score first to capture its NLP.">Set as baseline</button>
-        <button class="btn-secondary" id="btn-score-original" onclick="scoreOriginal()" style="display:none;" title="Re-score the current baseline (refresh after a cache change, etc.)">Re-score baseline</button>
-        <div class="score-status" id="score-status"></div>
-      </div>
-
-      <!-- Version flipper (left) + save action (right) on a single row.
-           Either piece can be hidden independently; the row collapses gracefully. -->
-      <div class="score-bottom-row">
-        <div class="version-flipper" id="version-flipper" style="display:none;">
-          <button onclick="flipVersion(-1)" id="flip-prev" disabled>&#9664;</button>
-          <span class="version-label" id="version-label">Base</span>
-          <button onclick="flipVersion(1)" id="flip-next" disabled>&#9654;</button>
+      <div class="panel-section page-picker-section">
+        <h3>Load a page</h3>
+        <div class="page-picker-row">
+          <select id="lab-page-select">
+            <option value="">-- Select a crawled page --</option>
+          </select>
+          <button class="btn-primary" onclick="loadSelectedPage()">Load</button>
         </div>
-        <div class="permutation-actions" id="perm-actions" style="display:none;">
-          <button class="btn-save-perm" onclick="showSavePermInput()">Save permutation</button>
-          <button class="btn-save-perm" onclick="saveAsRecipeTarget()" title="Pin the current arrangement as this page's recipe. Future 'Snap to recipe order' will load this state.">★ Save as recipe</button>
-          <!-- Export JSON moved to the future log/history screen -- it's a review-mode
-               action, not part of the working surface. -->
-        </div>
-      </div>
-      <div class="save-perm-input" id="save-perm-input" style="display:none;">
-        <input type="text" id="perm-label-input" placeholder="Label (e.g. moved FAQ above deals)..." maxlength="120" />
-        <button onclick="commitSavePermutation()">Save</button>
+        <span class="info" id="lab-picker-info"></span>
       </div>
 
-      <div id="nlp-delta-area"></div>
+      <div class="panel-section score-section">
+        <h3>Score</h3>
+        <div class="score-actions">
+          <button class="btn-primary" id="btn-score-wip" onclick="scoreWip()" title="Score the current arrangement of blocks.">Test</button>
+          <button class="btn-secondary" id="btn-commit" onclick="showSavePermInput()" title="Save the current arrangement as a new version (or overwrite V0 / V0.5 if one picker is empty).">Commit</button>
+          <!-- Hidden legacy element kept so existing JS that writes to score-status
+               doesn't crash; visible status moved to transient toast. -->
+          <div class="score-status" id="score-status" style="display:none;"></div>
+        </div>
+
+        <!-- Dual active/pinned picker. Either slot can be empty (dash).
+             Click a slot to activate it; the active one drives the canvas. -->
+        <div class="version-pickers" id="version-pickers" style="display:none;">
+          <div class="version-picker active" id="version-picker-a" data-slot="a" onclick="activatePicker('a')">
+            <button class="vp-arrow" onclick="event.stopPropagation(); flipPicker('a', -1)" aria-label="Previous version">&#9664;</button>
+            <span class="vp-label">&mdash;</span>
+            <button class="vp-arrow" onclick="event.stopPropagation(); flipPicker('a', 1)" aria-label="Next version">&#9654;</button>
+          </div>
+          <div class="version-picker" id="version-picker-b" data-slot="b" onclick="activatePicker('b')">
+            <button class="vp-arrow" onclick="event.stopPropagation(); flipPicker('b', -1)" aria-label="Previous version">&#9664;</button>
+            <span class="vp-label">&mdash;</span>
+            <button class="vp-arrow" onclick="event.stopPropagation(); flipPicker('b', 1)" aria-label="Next version">&#9654;</button>
+          </div>
+        </div>
+
+        <div class="save-perm-input" id="save-perm-input" style="display:none;">
+          <input type="text" id="perm-label-input" placeholder="Label (e.g. moved FAQ above deals)..." maxlength="120" />
+          <button onclick="commitSavePermutation()">Save</button>
+        </div>
+
+        <div id="nlp-delta-area"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -3853,7 +3929,7 @@ function showWorkspace() {
   // Score + Set as Baseline are always-enabled in the new model -- click them
   // whenever; internal guards handle the "score first" case for setAsBaseline.
   document.getElementById("btn-score-wip").disabled = false;
-  document.getElementById("btn-set-baseline").disabled = false;
+  // btn-set-baseline removed in redesign -- legacy assignment no-ops safely.
   // Snap-to-recipe button only meaningful when proposed_section is loaded
   // (curation-backed pages). HTML-parser fallback pages don't have it.
   const hasCuration = labBlocks.some(b => b.proposed_section);
@@ -5429,7 +5505,7 @@ function applySavedRecipeTarget(savedTarget) {
   labRearrangedNlpVersionLabel = "";
   labIsRearranged = blocksDifferFromOriginal();
   document.getElementById("btn-score-wip").disabled = false;
-  document.getElementById("btn-set-baseline").disabled = false;
+  // btn-set-baseline removed in redesign -- legacy assignment no-ops safely.
   renderBlockList();
   renderNlpDeltas();
 
@@ -5495,7 +5571,7 @@ function setAsBaseline() {
   // Both buttons stay enabled (always-on model). Score will re-fire whenever
   // the user wants a fresh delta from the new anchor.
   document.getElementById("btn-score-wip").disabled = false;
-  document.getElementById("btn-set-baseline").disabled = false;
+  // btn-set-baseline removed in redesign -- legacy assignment no-ops safely.
   renderNlpDeltas();
   renderBlockList();
   document.getElementById("score-status").textContent =
@@ -5643,9 +5719,10 @@ async function scoreOriginal() {
   }
 
   const html = blocksToHtml(labOriginalBlocks);
+  // btn-score-original removed in redesign -- guard so the function still works
+  // if called programmatically (e.g. on a fresh page load to recompute V0 NLP).
   const btn = document.getElementById("btn-score-original");
-  btn.disabled = true;
-  btn.textContent = "Scoring...";
+  if (btn) { btn.disabled = true; btn.textContent = "Scoring..."; }
   document.getElementById("score-status").textContent = "Scoring original (HTML mode)...";
 
   try {
@@ -6076,42 +6153,13 @@ function loadVersionIntoLab(ver) {
 }
 
 function updateFlipperUI() {
-  const flipper = document.getElementById("version-flipper");
-  const actions = document.getElementById("perm-actions");
-  const hasPage = !!labSlug;
-
-  if (!hasPage) {
-    flipper.style.display = "none";
-    actions.style.display = "none";
-    return;
-  }
-
-  actions.style.display = "";
-  const list = getVersionList();
-
-  // V0 always exists once a page is loaded. Show the flipper as soon as we
-  // have at least one entry so the user can see "V0 — original" labelled, even
-  // before they've saved any other versions.
-  if (list.length === 0) {
-    flipper.style.display = "none";
-    return;
-  }
-
-  flipper.style.display = "";
-  const label = document.getElementById("version-label");
-  const prev = document.getElementById("flip-prev");
-  const next = document.getElementById("flip-next");
-
-  // Default cursor: V0 (leftmost). The user navigates RIGHT to newer versions.
-  if (labVersionCursor < 0) labVersionCursor = 0;
-  const cur = list[labVersionCursor];
-
-  label.textContent = cur ? cur.dateLabel : "V0";
-  label.title = cur ? (cur.tooltip || cur.dateLabel) : "";
-
-  // Toggle direction: left = older (cursor--), right = newer (cursor++).
-  prev.disabled = labVersionCursor === 0;
-  next.disabled = labVersionCursor === list.length - 1;
+  // Stubbed during redesign: old single-flipper element was replaced with the
+  // dual active/pinned picker (#version-pickers). The new picker has its own
+  // render function (renderVersionPickers) wired in the next pass. Keeping this
+  // as a no-op so legacy callsites don't break before that rewires.
+  const pickers = document.getElementById("version-pickers");
+  if (!pickers) return;
+  pickers.style.display = labSlug ? "" : "none";
 }
 
 function showSavePermInput() {
