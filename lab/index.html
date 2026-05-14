@@ -1872,7 +1872,7 @@ async function loadSelectedPage() {
     labIsRearranged = false;
     labSections = [];
     // Dual picker: each new page starts with active=A pointing at V0, slot B blank.
-    resetPickersForNewPage();
+    resetPickersToDefault();
     labSelectedBlockIndices.clear();
     labExpandedBlocks.clear();
     labContainerNlp = {};      // reset; populated by scoreContainersForLab below
@@ -3394,6 +3394,10 @@ function resetBlockOrder() {
   // "throw away your edits and return to the original state".
   labVersionCursor = 0;
   labPermIndex = -1;
+  // Pickers + chip read from pickerCursors/activePickerSlot, not labVersionCursor,
+  // so reset those too -- otherwise the chip and pickers keep displaying whichever
+  // version was active before the reset.
+  resetPickersToDefault();
   renderBlockList();
   renderNlpDeltas();
   updateFlipperUI();
@@ -3514,7 +3518,7 @@ async function scoreWip() {
 let pickerCursors = { a: 0, b: -1 };
 let activePickerSlot = "a";
 
-function resetPickersForNewPage() {
+function resetPickersToDefault() {
   pickerCursors = { a: 0, b: -1 };
   activePickerSlot = "a";
 }
