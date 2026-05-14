@@ -3653,7 +3653,40 @@ function showToast(message, duration) {
 function renderNlpDeltas() {
   const area = document.getElementById("nlp-delta-area");
 
-  if (!labOriginalNlp) {
+  // Derive baseline from the PINNED picker (the not-active slot). Active picker
+  // = WIP / right column; pinned picker = baseline / left column. This is what
+  // makes V7 vs new-version comparisons actually show V7's numbers in the left
+  // column instead of always-V0.
+  const pinnedSlot = activePickerSlot === "a" ? "b" : "a";
+  const pinnedCursor = pickerCursors[pinnedSlot];
+  let baselineNlp = null;
+  let baseLabel = "V0";
+  if (pinnedCursor >= 0) {
+    const list = getVersionList();
+    const pinnedVer = list[pinnedCursor];
+    if (pinnedVer) {
+      if (pinnedVer.kind === "original") {
+        baselineNlp = labOriginalNlp;
+        baseLabel = "V0";
+      } else if (pinnedVer.perm) {
+        if (pinnedVer.perm.nlp_result) {
+          baselineNlp = pinnedVer.perm.nlp_result;
+          baseLabel = pinnedVer.shortLabel;
+        } else {
+          // Perm was saved without a stored NLP result; fall back to V0 so the
+          // delta still renders, and surface the fallback in the label.
+          baselineNlp = labOriginalNlp;
+          baseLabel = "V0 (no saved NLP on " + pinnedVer.shortLabel + ")";
+        }
+      }
+    }
+  } else {
+    // Pinned slot is blank → default to V0.
+    baselineNlp = labOriginalNlp;
+    baseLabel = "V0";
+  }
+
+  if (!baselineNlp) {
     area.innerHTML = "";
     return;
   }
@@ -3662,9 +3695,6 @@ function renderNlpDeltas() {
   // V# header: <baseline V#> → <right-side V#>. Right side is the V# of the
   // version that was last scored (e.g. "V0 → V2" after Score lands). When
   // there's no Score result yet, header shows just the baseline.
-  // Baseline is hardcoded to V0 for now; the dual picker's left slot will
-  // drive this once the picker → header wiring lands.
-  const baseLabel = "V0";
   const rightLabel = hasWip ? (labRearrangedNlpVersionLabel || "Scored") : null;
   const headerLabel = rightLabel ? (baseLabel + " → " + rightLabel) : (baseLabel + " (no comparison yet)");
 
@@ -3677,11 +3707,11 @@ function renderNlpDeltas() {
   html += buildVersionPickersHtml();
   html += '</div>';
 
-  const origCats = labOriginalNlp.categories || [];
+  const origCats = baselineNlp.categories || [];
   const newCats = hasWip ? (labRearrangedNlp.categories || []) : null;
   html += renderCategoriesScorecard(origCats, newCats);
 
-  const origEnts = labOriginalNlp.entities || [];
+  const origEnts = baselineNlp.entities || [];
   const newEnts = hasWip ? (labRearrangedNlp.entities || []) : null;
   html += renderEntitiesScorecard(origEnts, newEnts);
 
