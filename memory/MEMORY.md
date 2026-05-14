@@ -25,3 +25,4 @@
 
 ## Reference
 - [signal-coherence/ directory](signal-coherence-directory.md) -- where SEO investigation artifacts live
+- [Lab dashboard state and followups](lab-state-and-followups.md) -- what's in `lab/index.html` + `lab/styles.css`, what's deployed at signal-coherence.netlify.app, what looks-dead-but-isn't (V0.5, `is_snap_target`, `kind: "recipe"`), and open work. **Read before touching the Lab code.**
