@@ -1,0 +1,14 @@
+# Netlify CLI local state (links a working directory to a site; per-machine, not source)
+.netlify/
+
+# macOS Finder noise
+.DS_Store
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Editor / OS noise
+*.swp
+*~
