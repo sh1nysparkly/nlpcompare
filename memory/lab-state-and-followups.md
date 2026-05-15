@@ -98,4 +98,7 @@ All synced to Netlify.
 - "Rearrangement Lab" feels like a really awkward name - what about like, Page Lab? or just The Lab? Or something else?
 - When a block is edited from like, *base* then in every subsequent version, it still shows as edited, so if I change text at V2 and then a tweak that text further in V3 I have to like... keep track of that mentally? It would be helpful if the edited state was like, permutation-aware somehow? also want to make sure that the DB is tracking these things in a way that we can see text changes version/version?
 - when a version "wins" being able to export a plain-language like, explanation of what changes I'm asking for vs Base or UX versions so I can just pop that into the optimization guide?
-
+- ability to duplicate cards would be nice
+- further to that, being able to 'save' like - containers and blocks as reusable? so like, if they add a global thing I don't have to manually keep adding it from scratch on every page?
+- ability to add notes to self like in-line? like "comments" in Word or whatever? use cases: "maybe we try changing out 'Hotels' in this H2 in other versions?" kinda thing
+- changed my mind from a previous thing - DO need the ability to like, fully delete blocks b/c sometimes I add them by accident and they just take up space even when ghosted
