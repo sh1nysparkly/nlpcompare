@@ -1,4 +1,4 @@
-# Lab dashboard: state and followups (as of May 14, 2026)
+# Lab dashboard: state and followups (as of May 15, 2026)
 
 Source-of-truth for what's currently in `lab/index.html` + `lab/styles.css`, what's deployed at signal-coherence.netlify.app, and what's queued for follow-up work. Update as fixes ship / new threads open.
 
@@ -6,21 +6,21 @@ This doc exists because the May 14 cleanup session uncovered several spots where
 
 ## Deployment model
 
-- Netlify site (signal-coherence.netlify.app) is **NOT git-connected**. Deploy rows show `commit_ref: null`, `branch: null`, `deploy_source: "api"`. Pushes to the repo do not auto-deploy.
-- To deploy: from inside `lab/`, run the Netlify CLI/MCP. Site ID is `cab32293-702d-4f95-9358-d293c666ff96`. `.netlify/state.json` (gitignored) carries the local binding.
-- Repo and Netlify can drift if changes are made on either side without the other. **Always reconcile both directions** before assuming the repo represents truth -- May 14 had a case where Cowork Beans had landed three fixes only on Netlify and the repo was behind.
+- Netlify site (signal-coherence.netlify.app) is now **git-connected** (Anna wired it up after the May 14 session). Pushes to `main` should auto-deploy. Site ID: `cab32293-702d-4f95-9358-d293c666ff96`.
+- If a deploy doesn't fire on push, the git connection has drifted -- fall back to Netlify CLI/MCP deploy from inside `lab/` and reconnect via the Netlify dashboard.
+- Pre-May-15 history: the site was deploy-by-API-only and the repo + Netlify drifted on May 14 when Cowork Beans landed fixes only on Netlify. Keep an eye out for that pattern recurring; the git connection is the fix but the older deploys remain api-sourced.
 
 ## Architecture facts to preserve (read these before deleting anything that looks dead)
 
-### V0.5 is a load-bearing concept, not a snap-to-recipe artifact
+### V0.5 is a load-bearing concept
 
 V0.5 = the UX-proposed baseline state for a page. One per page. Anna validates UX redesigns by comparing V0 (live production) against V0.5 (UX proposal). V1, V2, ... are experimental perms layered on top.
 
-The DB column is named `is_snap_target` and the version-list `kind` is `"recipe"`. **Both names are legacy** -- they reference the cut snap-to-recipe ordering feature, not the concept they actually serve. Future-Bean trap: grepping "snap" will surface V0.5 code and look like dead snap residue. **Don't delete it.**
+DB column: `permutations.is_ux_baseline`. Version-list `kind`: `"ux_baseline"`. (Both were renamed May 15 from the prior legacy `is_snap_target` / `kind: "recipe"`, which referenced the long-deleted snap-to-recipe ordering feature.)
 
 Hot paths that read V0.5:
-- `getVersionList()` -- inserts V0.5 between V0 and V1 if a perm with `is_snap_target=true` exists, AND excludes those perms from the regular V1+ numbering via `.filter(p => !p.is_snap_target)`
-- `getCommitOverwriteTarget()` -- recognizes `kind: "recipe"` for the overwrite-V0.5 commit path
+- `getVersionList()` -- inserts V0.5 between V0 and V1 if a perm with `is_ux_baseline=true` exists, AND excludes those perms from the regular V1+ numbering via `.filter(p => !p.is_ux_baseline)`
+- `getCommitOverwriteTarget()` -- recognizes `kind: "ux_baseline"` for the overwrite-V0.5 commit path
 - `commitOverwriteV05()` -- PATCHes the existing V0.5 row when user is on V0.5 in the active picker + the other slot is blank and hits Commit
 
 ### Scorecard columns map directly to picker slots
@@ -44,7 +44,6 @@ The function takes `{ blocks, versionTag }`. `loadVersionIntoLab` calls it with 
 ### Other live concepts not to confuse with dead snap code
 
 - `loadRecipeSlots()` + `labRecipeSlots` -- populates the container-header slot picker UI (the pill-click-to-choose-template-slot interaction). Has nothing to do with snap-to-recipe ordering. **Don't remove.**
-- `kind: "recipe"` in the version list = V0.5, not the snap feature.
 - The colloquial word "snap" in comments (e.g. `// Reset snaps the cursor back to V0`) is unrelated to the cut feature.
 
 ## Recent commits (May 14, 2026, branch `claude/cleanup-index-html-Ml9b0`)
@@ -63,8 +62,7 @@ All synced to Netlify.
 
 ### Renames / migrations
 
-- **`is_snap_target` -> `is_ux_baseline`**: DB column rename + JS references update (`kind: "recipe"` -> `kind: "ux_baseline"`, comments). Removes the future-Bean trap of "this looks like snap residue."
-- **`ux_recipe_section` column**: still exists in `lp_blocks` but no code reads it after the May 14 cleanup. Drop the column if you want a clean schema.
+- **`ux_recipe_section` column**: still exists in `lp_blocks` but no code reads it after the May 14 cleanup. **Investigated May 15: holds 995 rows of hand-curated v12 section archetypes (Hero, FAQs & Resources, Travel Product Carousel, etc.) -- intentionally kept as curation reference data even though no code reads it. Do NOT drop without explicit go-ahead from Anna.**
 
 ### Half-wired flows
 

@@ -3909,22 +3909,21 @@ function getVersionList() {
   });
 
   // V0.5 = the UX-proposed baseline state for this page. Stored as a permutation
-  // row with is_snap_target=true (legacy column name; the concept is "UX baseline",
-  // not the dead snap-to-recipe feature). Conventionally one per page.
-  const recipe = labPermutations.find(p => p.is_snap_target);
-  if (recipe) {
+  // row with is_ux_baseline=true. Conventionally one per page.
+  const baseline = labPermutations.find(p => p.is_ux_baseline);
+  if (baseline) {
     list.push({
-      kind: "recipe",
+      kind: "ux_baseline",
       shortLabel: "V0.5",
-      dateLabel: "V0.5 — " + formatVersionDate(recipe.created_at),
-      tooltip: recipe.label || "UX baseline",
-      perm: recipe,
+      dateLabel: "V0.5 — " + formatVersionDate(baseline.created_at),
+      tooltip: baseline.label || "UX baseline",
+      perm: baseline,
     });
   }
 
   // V1, V2, ... = experimental perms in chronological order (loadPermutations
   // already returns ASC by created_at). V0.5 is excluded -- it's special.
-  const regular = labPermutations.filter(p => !p.is_snap_target);
+  const regular = labPermutations.filter(p => !p.is_ux_baseline);
   regular.forEach((p, i) => {
     list.push({
       kind: "perm",
@@ -4002,8 +4001,8 @@ function loadVersionIntoLab(ver) {
   // V0 vs V0.5 vs saved perms -- without re-scoring, the entities panel shows
   // baseline V0 attribution under whatever blocks are actually displayed.
   const versionTag =
-    ver.kind === "original" ? "v0-baseline" :
-    ver.kind === "recipe"   ? "v0.5-ux-baseline" :
+    ver.kind === "original"    ? "v0-baseline" :
+    ver.kind === "ux_baseline" ? "v0.5-ux-baseline" :
     ver.perm                ? ("perm-" + (ver.perm.id || ver.perm.label || "unknown")) :
                               "v0-baseline";
   scoreContainersForLab({ blocks: labBlocks, versionTag: versionTag });
@@ -4042,8 +4041,8 @@ function getCommitOverwriteTarget() {
 
   const ver = list[activeCursor];
   if (!ver) return null;
-  if (ver.kind === "original") return { kind: "v0", label: "V0 (live baseline)", perm: null };
-  if (ver.kind === "recipe")   return { kind: "v0.5", label: "V0.5 (UX recipe)", perm: ver.perm };
+  if (ver.kind === "original")    return { kind: "v0", label: "V0 (live baseline)", perm: null };
+  if (ver.kind === "ux_baseline") return { kind: "v0.5", label: "V0.5 (UX baseline)", perm: ver.perm };
   return null; // regular Vn pinned with empty other slot still means "save as new"
 }
 
@@ -4056,7 +4055,7 @@ function showSavePermInput() {
       showToast("V0 overwrite needs a schema migration -- coming next pass. Falling back to 'save as new'.");
       // fall through to the label-input flow below so the user can still save
     } else if (target.kind === "v0.5") {
-      if (window.confirm("Overwrite " + target.label + "?\n\nThis replaces the saved UX recipe with the current arrangement (blocks, sections, and most recent NLP).")) {
+      if (window.confirm("Overwrite " + target.label + "?\n\nThis replaces the saved UX baseline with the current arrangement (blocks, sections, and most recent NLP).")) {
         commitOverwriteV05(target.perm);
       }
       return;
@@ -4111,7 +4110,7 @@ async function commitOverwriteV05(existingPerm) {
     await loadPermutations();
     // Keep the active picker pointing at V0.5 after the overwrite.
     const list = getVersionList();
-    const v05Idx = list.findIndex(v => v.kind === "recipe");
+    const v05Idx = list.findIndex(v => v.kind === "ux_baseline");
     if (v05Idx !== -1) {
       pickerCursors[activePickerSlot] = v05Idx;
       labVersionCursor = v05Idx;
