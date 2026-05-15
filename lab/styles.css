@@ -2005,6 +2005,203 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
 }
 .reset-btn:hover { background: #fef4f4; }
 
+/* </> code-view toggle on each block card. Matches .block-ghost-toggle's
+   "low-key until hovered or active" pattern. .is-on = code view is open;
+   .is-html = block is currently html-authored (badge visible even when
+   rendered view is showing). */
+.block-code-view-toggle {
+  flex: 0 0 auto;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-subtle);
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
+}
+.block-card:hover .block-code-view-toggle { opacity: 0.75; }
+.block-code-view-toggle:hover {
+  opacity: 1 !important;
+  color: var(--primary);
+  background: var(--surface-hover);
+}
+.block-code-view-toggle.is-on {
+  opacity: 1;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: var(--primary);
+}
+.block-code-view-toggle.is-html {
+  opacity: 1;
+  color: var(--primary);
+  border-color: var(--primary-soft);
+}
+
+/* Textarea that replaces the .block-body div when </> is active.
+   Monospaced + wraps + grows tall enough to make HTML editing comfortable. */
+.block-body-code {
+  display: block;
+  width: 100%;
+  min-height: 140px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  background: #fafbfd;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  resize: vertical;
+  white-space: pre-wrap;
+  box-sizing: border-box;
+}
+.block-body-code:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: #fff;
+}
+
+/* HTML badge on the block meta line. Same shape as .edited-tag but in a
+   primary/blue palette so the two read as distinct states. */
+.html-authored-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* </> button on each container header (diagnostic surface). Sits between the
+   NLP pill and the block-count meta. Subdued by default, brighter on hover. */
+.container-code-view-btn {
+  flex: 0 0 auto;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-subtle);
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s;
+}
+.container-header:hover .container-code-view-btn { opacity: 0.85; }
+.container-code-view-btn:hover {
+  opacity: 1;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: var(--primary-soft);
+}
+
+/* Modal: read-only popover showing the joined HTML this container sends to NLP.
+   Backdrop + centered panel. Only visible when .open is set on the modal root. */
+.container-code-view-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.container-code-view-modal.open { display: flex; }
+.container-code-view-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+.container-code-view-panel {
+  position: relative;
+  z-index: 1;
+  width: min(900px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: var(--r-lg);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  overflow: hidden;
+}
+.container-code-view-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-hover);
+}
+.container-code-view-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.container-code-view-sub {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-subtle);
+  letter-spacing: 0.03em;
+}
+.container-code-view-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.container-code-view-copy {
+  background: none;
+  border: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  padding: 5px 11px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.container-code-view-copy:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.container-code-view-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-subtle);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.container-code-view-close:hover { color: var(--text); }
+.container-code-view-pre {
+  margin: 0;
+  padding: 16px 20px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  background: #fafbfd;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 footer {
   margin-top: 40px;
   padding-top: 20px;
