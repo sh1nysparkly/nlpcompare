@@ -177,7 +177,7 @@ function renderMatrix(slug, permutations) {
   let html = '<table class="matrix"><thead><tr>';
   html += '<th class="row-head">Category</th>';
   for (const p of permutations) {
-    const pin = p.is_snap_target ? '<span class="version-pin" title="current snap target">snap</span>' : '';
+    const pin = p.is_ux_baseline ? '<span class="version-pin" title="UX baseline (V0.5)">V0.5</span>' : '';
     html += '<th class="version-head"><span class="version-label">' + escapeHtml(p.label) + pin + '</span>';
     html += '<span class="version-meta">' + fmtDate(p.created_at) + '</span></th>';
   }
@@ -201,11 +201,11 @@ function renderMatrix(slug, permutations) {
   scroll.innerHTML = html;
 
   const unscored = permutations.filter(p => !p.nlp_result || !p.nlp_result.categories || !p.nlp_result.categories.length).length;
-  const snapCount = permutations.filter(p => p.is_snap_target).length;
+  const baselineCount = permutations.filter(p => p.is_ux_baseline).length;
   meta.innerHTML =
     '<span><strong>' + permutations.length + '</strong> permutations</span>' +
     '<span><strong>' + sortedCats.length + '</strong> distinct categories</span>' +
-    (snapCount ? '<span><strong>' + snapCount + '</strong> marked as snap target</span>' : '') +
+    (baselineCount ? '<span><strong>' + baselineCount + '</strong> marked as UX baseline</span>' : '') +
     (unscored ? '<span style="color: var(--warning);"><strong>' + unscored + '</strong> not scored</span>' : '');
 }
 
