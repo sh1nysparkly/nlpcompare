@@ -48,15 +48,23 @@ The function takes `{ blocks, versionTag }`. `loadVersionIntoLab` calls it with 
 
 ## Recent commits (May 14, 2026, branch `claude/cleanup-index-html-Ml9b0`)
 
-All synced to Netlify.
+**Honesty note (added May 15 2026):** This list previously claimed "All synced to Netlify" -- which conflated "Netlify has it" with "the repo has it." Three of the entries below (`c29f073`, `fee08ec`, `ff336dc`) were applied to Netlify via Cowork-Bean sessions but **never committed to the repo**. They're listed here as historical breadcrumbs, NOT as commits a future Bean can check out. When the Netlify git-connection landed (May 15) and an auto-deploy from `main` ran, the Netlify-only fixes got overwritten and had to be rebuilt (see below). **Don't add an entry to this list unless you've verified `git rev-parse <sha>` resolves.**
 
+In repo:
 - `ff103bf` -- Cleanup: removed snap-to-recipe machinery, restyled "Showing V*" status chip to harmonize with `.outline-btn`, extracted inline `<style>` to `lab/styles.css`
 - `5545b54` -- Restored V0.5 picker entry (regression fix from ff103bf where V0.5 got bundled into the snap cleanup); removed vestigial `setAsBaseline` / `labBaselineVersionRef` / `"Pinned"` machinery
 - `a09d7d6` -- Reset to baseline now also resets dual pickers + chip (pre-existing bug surfaced during the session)
 - `31dd4e8` -- Synced Cowork Bean fixes from Netlify (`await loadPermutations`, real `updateFlipperUI` rebuild, `commitSavePermutation` always reads live editor state); fixed per-container entity attribution to be version-aware via the parameterized `scoreContainersForLab`
-- `c29f073` -- Added `.gitignore` (`.netlify/` + common OS noise)
-- `fee08ec` -- Initial delta-baseline-from-pinned-picker fix (superseded by ff336dc)
-- `ff336dc` -- Scorecard columns now map directly to picker slots (LEFT=a, RIGHT=b)
+
+Netlify-only (NEVER committed; lost when git auto-deploy from `main` overwrote prod May 15):
+- `c29f073` -- Added `.gitignore` (`.netlify/` + common OS noise). Not currently in the repo; recreate if/when desired.
+- `fee08ec` -- Initial delta-baseline-from-pinned-picker fix (was superseded by ff336dc on Netlify).
+- `ff336dc` -- Scorecard columns map directly to picker slots (LEFT=a, RIGHT=b). The lab-state section above describes the intended behavior. **Rebuilt fresh May 15** as `getColumnNlp(slot)` -- see the May 15 entry below.
+
+## Recent commits (May 15, 2026, branch `claude/update-supabase-widgets-YSP6I` + main)
+
+- `675e4d3` -- Per-block `</>` toggle for HTML-authored block bodies + container-level `</>` diagnostic popover. `html_authored` flag + `body_html` field; `regenerateBlockHtml` short-circuits to authored HTML verbatim so NLP receives real structure. Persisted via both save paths.
+- `3d30ce1` -- Rebuild of the lost `ff336dc` fix: `getColumnNlp(slot)` routes scorecard columns to picker slots (LEFT=a base, RIGHT=b comparison). Active-slot WIP override via `labRearrangedNlpVersionLabel` match on shortLabel.
 
 ## Open followups
 
