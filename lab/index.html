@@ -3676,13 +3676,14 @@ async function scoreWip() {
       return;
     }
     labRearrangedNlp = result;
-    // The score reflects whatever's currently in labBlocks. If that exactly
-    // matches a saved version's blocks, label the right-hand side of the delta
-    // header with that V#. Otherwise it's a draft built off of <V#> -> "V<n>+".
+    // Label the fresh WIP score with the currently-loaded version's shortLabel
+    // (without any "+" suffix). The WIP-override route in getColumnNlp matches
+    // exactly on shortLabel, and is gated by slot===activePickerSlot, so the
+    // fresh score only shows in the active column even if the other picker
+    // points at the same version. Earlier "V15+" labelling broke that match
+    // because labIsRearranged is V0-relative, not loaded-version-relative.
     const cur = getCurrentVersion();
-    labRearrangedNlpVersionLabel = cur
-      ? (labIsRearranged ? cur.shortLabel + "+" : cur.shortLabel)
-      : "Scored";
+    labRearrangedNlpVersionLabel = cur ? cur.shortLabel : "Scored";
     document.getElementById("score-status").textContent =
       "Scored. See deltas below.";
     renderNlpDeltas();
