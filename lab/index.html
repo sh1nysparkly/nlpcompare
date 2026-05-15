@@ -658,6 +658,7 @@ let labSelectedBlockIndices = new Set(); // indices of blocks currently selected
 let nextSectionId = 1;      // monotonic counter for section IDs
 
 let labExpandedBlocks = new Set(); // indices of long blocks the user has explicitly expanded
+let labCodeViewBlocks = new Set(); // indices of blocks currently showing the </> code-view (textarea on body_html)
 let labCollapsedContainers = new Set(); // container_ids the user has collapsed (hide blocks, show only header)
 let labContainerNlp = {};   // { container_id: { categories, entities, word_count, ... } } -- per-container NLP results, populated post-load
 let labContainerNlpInProgress = false;
@@ -2059,13 +2060,25 @@ function renderBlockList() {
       : block.body_text;
 
     let bodyHtml = "";
+    const isCodeView = labCodeViewBlocks.has(i);
+    const isHtmlAuthored = !!block.html_authored;
     // Show the body field whenever there's body text OR the block has been
     // edited (which includes newly-added blocks from + Block / + Container).
     // Crawled-and-untouched blocks with no body stay clean. Empty body field
     // gets a CSS placeholder via .block-body:empty::before so the user knows
     // they can type into it.
     const wantsEmptyBody = !block.body_text && block.edited;
-    if (block.body_text) {
+    if (isCodeView) {
+      // </> code view: textarea bound to body_html. If the block hasn't been
+      // HTML-authored yet, seed with the current original_html so Anna can see
+      // exactly what's being sent and paste structured HTML over it.
+      const seedValue = block.body_html || block.original_html || "";
+      bodyHtml = `<textarea class="block-body-code" spellcheck="false"
+                  onfocus="onEditFocus(event, ${i})"
+                  onblur="onCodeViewBlur(event, ${i})"
+                  placeholder="Paste structured HTML here. Saved as body_html and sent verbatim to the NLP API."
+                  >${escapeHtml(seedValue)}</textarea>`;
+    } else if (block.body_text) {
       if (showCollapsed) {
         // Collapsed preview is always-on display, never edited -- safe to highlight.
         bodyHtml = `<div class="block-body collapsed">${highlightEntitiesInHtml(escapeHtml(previewText), topEntities)}</div>` +
@@ -2073,6 +2086,9 @@ function renderBlockList() {
       } else {
         // Expanded body IS contenteditable. Highlights ride along until focus,
         // then onEditFocus strips them so editing isn't fighting span boundaries.
+        // HTML-authored blocks: contenteditable still shows the text content
+        // (option B) but editing it will revert the block to plain-text mode --
+        // commitBlockEdit drops body_html and clears html_authored.
         bodyHtml = `<div class="block-body" contenteditable="true" spellcheck="true"
                   onfocus="onEditFocus(event, ${i})"
                   onblur="onBodyBlur(event, ${i})"
@@ -2097,6 +2113,21 @@ function renderBlockList() {
                title="${blockGhost ? 'Restore (include in scoring)' : 'Ghost this block (exclude from scoring)'}"
                aria-label="${blockGhost ? 'Unghost block' : 'Ghost block'}">&#x1F47B;</button>`;
 
+    // </> code-view toggle: switches the body between rendered (default) and
+    // textarea bound to body_html. is-on when active OR when block is currently
+    // html-authored (so it's visible at a glance which blocks are HTML).
+    const codeBtnClasses = ["block-code-view-toggle"];
+    if (isCodeView) codeBtnClasses.push("is-on");
+    if (isHtmlAuthored) codeBtnClasses.push("is-html");
+    const codeBtn = `<button class="${codeBtnClasses.join(' ')}"
+               onclick="event.stopPropagation(); toggleBlockCodeView(${i})"
+               title="${isCodeView ? 'Hide HTML source view' : (isHtmlAuthored ? 'This block is HTML-authored. Click to view/edit the HTML.' : 'Show HTML source view (edit raw HTML sent to NLP)')}"
+               aria-label="Toggle code view">&lt;/&gt;</button>`;
+
+    const htmlBadge = isHtmlAuthored
+      ? ' &middot; <span class="html-authored-tag" title="Body is authored HTML. The NLP API receives this HTML verbatim.">HTML</span>'
+      : '';
+
     html += `
       <div class="${cardClasses.join(' ')}" data-index="${i}" draggable="true"
            onclick="onBlockClick(event, ${i})"
@@ -2115,8 +2146,9 @@ function renderBlockList() {
                   onkeydown="onEditableKeydown(event)">${highlightEntitiesInHtml(escapeHtml(block.title), topEntities)}</span>
           </div>
           ${bodyHtml}
-          <div class="block-meta">${block.word_count} words${headingMeta}${isEdited ? ' &middot; <span class="edited-tag">edited</span>' : ''}${blockGhost ? ' &middot; <span class="ghost-tag">ghosted</span>' : ''}</div>
+          <div class="block-meta">${block.word_count} words${headingMeta}${isEdited ? ' &middot; <span class="edited-tag">edited</span>' : ''}${htmlBadge}${blockGhost ? ' &middot; <span class="ghost-tag">ghosted</span>' : ''}</div>
         </div>
+        ${codeBtn}
         ${ghostBtn}
       </div>
     `;
@@ -2299,6 +2331,14 @@ function renderContainerHeader(firstBlock, totalBlocks, isFirst, minLevel) {
       html += '<span class="container-nlp-pill is-empty" title="' + escapeHtml(note) + '">&mdash;</span>';
     }
   }
+
+  // </> diagnostic: opens a read-only modal showing the exact HTML this
+  // container would send to the NLP API (mirrors scoreContainersForLab's join).
+  html += '<button class="container-code-view-btn"' +
+          ' onclick="event.stopPropagation(); openContainerCodeView(\'' +
+            escapeHtml(containerId) + '\')"' +
+          ' title="View the HTML this container sends to the NLP API"' +
+          ' aria-label="View container HTML">&lt;/&gt;</button>';
 
   html += '<span class="container-meta">' + totalBlocks +
           (totalBlocks === 1 ? ' block' : ' blocks') + '</span>';
@@ -2525,6 +2565,79 @@ function collapseAllContainers() {
   for (const b of labBlocks) if (b.container_id) ids.add(b.container_id);
   labCollapsedContainers = ids;
   renderBlockList();
+}
+
+// Open a read-only modal showing the joined HTML this container sends to the
+// NLP API. Mirrors scoreContainersForLab's per-container join EXACTLY: empty-string
+// separator, b.original_html with fallback to regenerateBlockHtml(b), no ghost
+// filter at this layer (per-block ghosts already excluded their content from
+// original_html at edit time, but ghosted blocks ARE still listed here so the
+// user can see they're being excluded).
+function openContainerCodeView(containerId) {
+  const blocks = labBlocks.filter(b => b.container_id === containerId);
+  if (blocks.length === 0) return;
+  const label = blocks[0].container_label || containerId;
+
+  // Match scoreContainersForLab exactly: skip ghosted blocks (they aren't sent),
+  // then join with "" (per-container scoring uses empty separator).
+  const ghostSectionIds = new Set(labSections.filter(s => s.is_ghost).map(s => s.id));
+  const sentBlocks = blocks.filter(b => !b.is_ghost && !ghostSectionIds.has(b.section_id));
+  const html = sentBlocks
+    .map(b => b.original_html || regenerateBlockHtml(b))
+    .filter(Boolean)
+    .join("");
+
+  let modal = document.getElementById("container-code-view-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "container-code-view-modal";
+    modal.className = "container-code-view-modal";
+    modal.innerHTML = `
+      <div class="container-code-view-backdrop" onclick="closeContainerCodeView()"></div>
+      <div class="container-code-view-panel" role="dialog" aria-modal="true">
+        <div class="container-code-view-header">
+          <div>
+            <div class="container-code-view-title"></div>
+            <div class="container-code-view-sub">HTML sent to the NLP API for this container</div>
+          </div>
+          <div class="container-code-view-actions">
+            <button class="container-code-view-copy" onclick="copyContainerCodeView()">Copy</button>
+            <button class="container-code-view-close" onclick="closeContainerCodeView()" aria-label="Close">&times;</button>
+          </div>
+        </div>
+        <pre class="container-code-view-pre"></pre>
+      </div>`;
+    document.body.appendChild(modal);
+    // Esc to close.
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.classList.contains("open")) closeContainerCodeView();
+    });
+  }
+  modal.querySelector(".container-code-view-title").textContent = label;
+  const pre = modal.querySelector(".container-code-view-pre");
+  // textContent (not innerHTML) so tags stay literal/visible.
+  pre.textContent = html || "(empty — no scored content in this container)";
+  modal.classList.add("open");
+}
+
+function closeContainerCodeView() {
+  const modal = document.getElementById("container-code-view-modal");
+  if (modal) modal.classList.remove("open");
+}
+
+async function copyContainerCodeView() {
+  const modal = document.getElementById("container-code-view-modal");
+  if (!modal) return;
+  const text = modal.querySelector(".container-code-view-pre").textContent || "";
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = modal.querySelector(".container-code-view-copy");
+    const orig = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  } catch (e) {
+    console.error("clipboard write failed", e);
+  }
 }
 
 function expandAllContainers() {
@@ -2801,6 +2914,48 @@ function onEditFocus(e, blockIndex) {
 function commitBlockEdit(blockIndex, field, rawText) {
   const block = labBlocks[blockIndex];
   if (!block) return;
+
+  // body_html follows a different commit path: HTML preserves its own whitespace
+  // (don't collapse), and a non-empty value derives body_text via textContent so
+  // word_count + entity highlighting + previews still work.
+  if (field === "body_html") {
+    const raw = String(rawText || "");
+    const oldHtml = String(block.body_html || "");
+    const oldAuthored = !!block.html_authored;
+    const willBeAuthored = raw.trim().length > 0;
+    // No-op if nothing actually changed (avoid spurious edited flags on click-and-leave).
+    if (raw === oldHtml && willBeAuthored === oldAuthored) return;
+
+    if (willBeAuthored) {
+      block.body_html = raw;
+      block.html_authored = true;
+      // Derive body_text via DOM textContent so we get tag-stripped text without
+      // having to write a regex sanitizer. Wrapping in a div is the standard way
+      // to parse a fragment without DOMParser's whole-document boilerplate.
+      const tmp = document.createElement("div");
+      tmp.innerHTML = raw;
+      const derivedText = (tmp.textContent || "").replace(/\s+/g, " ").trim();
+      block.body_text = derivedText;
+      block.word_count = derivedText ? derivedText.split(/\s+/).filter(Boolean).length : 0;
+    } else {
+      // Empty textarea = revert to plain-text mode. Keep body_text as-is so the
+      // user can still see their previous content; just stop treating it as HTML.
+      delete block.body_html;
+      block.html_authored = false;
+    }
+    block.original_html = regenerateBlockHtml(block);
+    block.edited = true;
+
+    labIsRearranged = blocksDifferFromOriginal();
+    const wipBtn = document.getElementById("btn-score-wip");
+    if (wipBtn) wipBtn.disabled = false;
+    if (labIsRearranged) {
+      document.getElementById("score-status").textContent = "Edit applied. Score to see the difference.";
+    }
+    renderBlockList();
+    return;
+  }
+
   // Normalize BOTH sides identically before comparing -- otherwise a stored value
   // with any whitespace quirks would always look "different" from its normalized
   // re-read on blur, falsely flagging the block as edited on a click-and-leave.
@@ -2811,6 +2966,11 @@ function commitBlockEdit(blockIndex, field, rawText) {
   block[field] = newNorm;
   if (field === "body_text") {
     block.word_count = newNorm ? newNorm.split(/\s+/).filter(Boolean).length : 0;
+    // Plain-text body edit overrides any prior HTML-authoring on this block.
+    if (block.html_authored) {
+      block.html_authored = false;
+      delete block.body_html;
+    }
   }
   block.original_html = regenerateBlockHtml(block);
   block.edited = true;
@@ -2850,12 +3010,33 @@ function onBodyBlur(e, blockIndex) {
   }
 }
 
+function onCodeViewBlur(e, blockIndex) {
+  const card = e.currentTarget.closest(".block-card");
+  if (card) card.draggable = true;
+  const el = e.currentTarget;
+  // Bail if user opened code view but didn't modify the seed. Prevents an
+  // accidental "html_authored=true" flip when the seed value (original_html
+  // or body_html) is committed verbatim. textarea.defaultValue is the parse-
+  // time initial value; .value is the current state.
+  if (el.value === el.defaultValue) return;
+  // Textarea .value preserves whitespace verbatim, which is what we want for HTML.
+  commitBlockEdit(blockIndex, "body_html", el.value);
+}
+
+function toggleBlockCodeView(blockIndex) {
+  if (labCodeViewBlocks.has(blockIndex)) labCodeViewBlocks.delete(blockIndex);
+  else labCodeViewBlocks.add(blockIndex);
+  renderBlockList();
+}
+
 function regenerateBlockHtml(block) {
   // Synthesize a minimal HTML representation from the (possibly edited) title + body_text.
   // This replaces the originally-parsed inner structure (lists, links, etc.); the user's
   // edit has overridden it. Title-only and body-only edge cases handled.
   // Level encoding matches blockLevelLabel/blockLevelClass:
   //   1..6 -> <h1>..<h6>; 7 -> <p>; 8 -> <button role="tab">; 0 -> no title element.
+  // When block.html_authored, the body is the user-authored body_html verbatim
+  // (no escaping, no <p> wrap) so the NLP API receives the real structure.
   const esc = s => (s || "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   const lvl = block.level;
   const title = esc(block.title || "");
@@ -2866,7 +3047,12 @@ function regenerateBlockHtml(block) {
     else if (lvl === 8) titleHtml = `<button role="tab">${title}</button>`;
     // lvl === 0 (SEC) intentionally has no title element.
   }
-  const bodyHtml = block.body_text ? `<p>${esc(block.body_text)}</p>` : "";
+  let bodyHtml = "";
+  if (block.html_authored && block.body_html) {
+    bodyHtml = block.body_html;
+  } else if (block.body_text) {
+    bodyHtml = `<p>${esc(block.body_text)}</p>`;
+  }
   return titleHtml + bodyHtml;
 }
 
@@ -4091,8 +4277,10 @@ async function commitOverwriteV05(existingPerm) {
       section_id: b.section_id,
       edited: b.edited || false,
       is_ghost: !!b.is_ghost,
+      html_authored: !!b.html_authored,
     };
     if (b.edited) slim.original_html = b.original_html;
+    if (b.html_authored && b.body_html) slim.body_html = b.body_html;
     return slim;
   });
 
@@ -4156,8 +4344,10 @@ async function commitSavePermutation() {
       section_id: b.section_id,
       edited: b.edited || false,
       is_ghost: !!b.is_ghost,
+      html_authored: !!b.html_authored,
     };
     if (b.edited) slim.original_html = b.original_html;
+    if (b.html_authored && b.body_html) slim.body_html = b.body_html;
     return slim;
   });
 
