@@ -26,3 +26,4 @@
 ## Reference
 - [signal-coherence/ directory](signal-coherence-directory.md) -- where SEO investigation artifacts live
 - [Lab dashboard state and followups](lab-state-and-followups.md) -- what's in `lab/index.html` + `lab/styles.css`, what's deployed at signal-coherence.netlify.app, what looks-dead-but-isn't (V0.5, `is_snap_target`, `kind: "recipe"`), and open work. **Read before touching the Lab code.**
+- [May 15 widget-fix patch](signal-coherence-may15-widget-patch.md) -- record of the surgical swap (raw_html in `crawled_pages` + card rows in `lp_blocks`, marked `curation_version='v20'`) that replaced widget-error placeholders on hotels/cruises/flights and the empty Activities Albertans Loved carousel on things-to-do. Includes the row_order shift technique (high-range parking to dodge the unique constraint) and the RLS-toggle pattern for bulk HTML upload.
