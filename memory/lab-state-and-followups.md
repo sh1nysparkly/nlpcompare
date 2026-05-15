@@ -97,4 +97,7 @@ All synced to Netlify.
 - as a stretch goal might be cool to use this entity and topic data to create like a topic map/IA
 - what if when I click on an entity in the sidebar it sort of highlights the relevant container(s)
 - what about colour-coding for entities? like in the NLP API? Like PLACE vs PERSON kinda thing?
+- "Rearrangement Lab" feels like a really awkward name - what about like, Page Lab? or just The Lab? Or something else?
+- When a block is edited from like, *base* then in every subsequent version, it still shows as edited, so if I change text at V2 and then a tweak that text further in V3 I have to like... keep track of that mentally? It would be helpful if the edited state was like, permutation-aware somehow? also want to make sure that the DB is tracking these things in a way that we can see text changes version/version?
+- when a version "wins" being able to export a plain-language like, explanation of what changes I'm asking for vs Base or UX versions so I can just pop that into the optimization guide?
 
