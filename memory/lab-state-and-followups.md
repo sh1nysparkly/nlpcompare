@@ -90,12 +90,12 @@ All synced to Netlify.
 - can we add a favicon?
 - adding in keyword lists/highlighting as another reference layer
 - I want to add the slide-in sidebar ToC on the lefthand side to help validate tag structure/flow of the page
-- show a count of entities (might be informative to see if the count of unique entities goes up or down significantly with copy changes
+- show a count of entities (might be informative to see if the count of unique entities goes up or down significantly with copy changes - I was thinking like, total # returned per version but at a container level might also be helpful?)
 - it'd be cool if each container operated like a bootstrap container and I could arrange the blocks in a way that mimics the Figma layout (easier to do audits/comparisons)
 - what about a little </> button inside containers or at the page level so I can look at exactly what's passed to the API (could help w troubleshooting/diagnostics)
 - could the container heading/text automatically be inherited from the top text contained within?
-- as a stretch goal might be cool to use this entity and topic data to create like a topic map/IA
-- what if when I click on an entity in the sidebar it sort of highlights the relevant container(s)
+- as a future-us stretch goal might be cool to use this entity and topic data to create like a topic map/IA
+- what if when I click on an entity in the sidebar it sort of highlights the relevant container(s)? Like if I click Japan in the sidebar list of entities and the containers/blocks on the canvas that have Japan entities "highlighted" somehow?
 - what about colour-coding for entities? like in the NLP API? Like PLACE vs PERSON kinda thing?
 - "Rearrangement Lab" feels like a really awkward name - what about like, Page Lab? or just The Lab? Or something else?
 - When a block is edited from like, *base* then in every subsequent version, it still shows as edited, so if I change text at V2 and then a tweak that text further in V3 I have to like... keep track of that mentally? It would be helpful if the edited state was like, permutation-aware somehow? also want to make sure that the DB is tracking these things in a way that we can see text changes version/version?
