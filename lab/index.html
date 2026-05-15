@@ -3836,6 +3836,33 @@ function showToast(message, duration) {
   }, duration || 2800);
 }
 
+// Returns the NLP result for the version currently selected in a picker slot.
+// LEFT picker (slot "a") drives the scorecard's BASE column. RIGHT picker
+// (slot "b") drives the COMPARISON column. The active-slot ALSO routes fresh
+// WIP scores: if the active slot's loaded version has been re-scored via
+// Score WIP since loading (matched on shortLabel via labRearrangedNlpVersionLabel),
+// that slot's column shows the fresh score instead of the saved nlp_result.
+// Returns null when the slot is empty (cursor < 0) or no NLP data is available
+// for the selected version yet.
+function getColumnNlp(slot) {
+  const list = getVersionList();
+  const cursor = pickerCursors[slot];
+  if (cursor < 0 || cursor >= list.length) return null;
+  const ver = list[cursor];
+  if (!ver) return null;
+
+  // Fresh WIP score wins for the active slot when it matches the scored version.
+  if (labRearrangedNlp
+      && slot === activePickerSlot
+      && labRearrangedNlpVersionLabel === ver.shortLabel) {
+    return labRearrangedNlp;
+  }
+
+  if (ver.kind === "original") return labOriginalNlp;
+  if (ver.perm && ver.perm.nlp_result) return ver.perm.nlp_result;
+  return null;
+}
+
 function renderNlpDeltas() {
   const area = document.getElementById("nlp-delta-area");
 
@@ -3844,15 +3871,21 @@ function renderNlpDeltas() {
     return;
   }
 
-  const hasWip = !!labRearrangedNlp;
-  // V# header: <baseline V#> → <right-side V#>. Right side is the V# of the
-  // version that was last scored (e.g. "V0 → V2" after Score lands). When
-  // there's no Score result yet, header shows just the baseline.
-  // Baseline is hardcoded to V0 for now; the dual picker's left slot will
-  // drive this once the picker → header wiring lands.
-  const baseLabel = "V0";
-  const rightLabel = hasWip ? (labRearrangedNlpVersionLabel || "Scored") : null;
-  const headerLabel = rightLabel ? (baseLabel + " → " + rightLabel) : (baseLabel + " (no comparison yet)");
+  // Column data routes through getColumnNlp -- the dual picker IS the columns.
+  // LEFT column = slot "a"'s data; RIGHT column = slot "b"'s data. Do not
+  // reintroduce "active = baseline" mediation (it inverts the mental model in
+  // the common case where the user keeps their baseline in the LEFT picker
+  // and cycles comparisons on the RIGHT).
+  const baseNlp = getColumnNlp("a");
+  const newNlp = getColumnNlp("b");
+  const list = getVersionList();
+  const aVer = (pickerCursors.a >= 0 && pickerCursors.a < list.length) ? list[pickerCursors.a] : null;
+  const bVer = (pickerCursors.b >= 0 && pickerCursors.b < list.length) ? list[pickerCursors.b] : null;
+  const baseLabel = aVer ? aVer.shortLabel : "—";
+  const rightLabel = bVer ? bVer.shortLabel : null;
+  // Whether to render the comparison (right) column. True iff slot b has a
+  // version selected AND that version has any NLP data to compare against.
+  const hasRight = !!newNlp && !!bVer;
 
   let html = '<div class="scorecard">';
   // Scorecard header IS the dual picker. Pickers sit transparently inside the
@@ -3863,13 +3896,16 @@ function renderNlpDeltas() {
   html += buildVersionPickersHtml();
   html += '</div>';
 
-  const origCats = labOriginalNlp.categories || [];
-  const newCats = hasWip ? (labRearrangedNlp.categories || []) : null;
-  html += renderCategoriesScorecard(origCats, newCats);
+  // Fall back to V0 (labOriginalNlp) when slot a has no data -- the scorecard
+  // should never render with both columns empty given the !labOriginalNlp
+  // guard above.
+  const baseCats = (baseNlp && baseNlp.categories) || [];
+  const newCats = hasRight ? (newNlp.categories || []) : null;
+  html += renderCategoriesScorecard(baseCats, newCats);
 
-  const origEnts = labOriginalNlp.entities || [];
-  const newEnts = hasWip ? (labRearrangedNlp.entities || []) : null;
-  html += renderEntitiesScorecard(origEnts, newEnts);
+  const baseEnts = (baseNlp && baseNlp.entities) || [];
+  const newEnts = hasRight ? (newNlp.entities || []) : null;
+  html += renderEntitiesScorecard(baseEnts, newEnts);
 
   html += '</div>';
   area.innerHTML = html;
