@@ -12,63 +12,82 @@ Plus: this is Anna's last high-leverage window before AMA Travel website remedia
 
 This plan exists to reset to ground truth and produce a dependency-mapped set of pick-up-able threads.
 
+**May 17 update:** Cluster 1 (V0 overwrite + 6 of 16 captured ideas) shipped on branch `claude/explore-and-plan-phase-1-G9PZq` → merged to main as PR #11 and follow-up pushes. Eight commits, two schema migrations. The pattern taxonomy (`lp_blocks.pattern_key` + `LAB_PATTERNS` enum + container header dropdown replacing slot UI) wasn't originally scoped here but emerged as the substrate the plain-language export needed; it deserves its own memory doc -- see `memory/pattern-taxonomy-and-export.md`. Bug fix in `83c8c90` for a blank-scorecard regression on pages with pre-existing V0 baselines.
+
 ---
 
-## Status snapshot (May 16, 2026)
+## Status snapshot (May 17, 2026 -- updated)
 
-Numbers verified via Explore-agent reconnaissance against `lab/index.html`, `lab/styles.css`, `memory/lab-state-and-followups.md`, and git log.
+Numbers verified via Explore-agent reconnaissance against `lab/index.html`, `lab/styles.css`, `memory/lab-state-and-followups.md`, and git log. Snapshot refreshed end-of-May-17 to reflect Cluster 1 shipment.
 
 | Item | Status | Evidence |
 |---|---|---|
 | Snap-to-recipe machinery removed | DONE | commit `ff103bf`; zero greps |
 | `.canvas-showing-chip` restyled | DONE | styles.css:1758-1775 vs 1229-1245 |
 | Inline `<style>` extracted to `lab/styles.css` | DONE | lab/index.html:12 link tag |
-| V0.5 picker entry + filter | DONE | `kind: "ux_baseline"` at line 4139 |
+| V0.5 picker entry + filter | DONE | `kind: "ux_baseline"` |
 | `setAsBaseline` / `labBaselineVersionRef` cleanup | DONE | commit `5545b54`; zero greps |
-| `resetBlockOrder` syncs pickers + chip | DONE | line 3710 |
-| `resetPickersForNewPage` → `resetPickersToDefault` | DONE | lines 3741, 3764, 3867 |
+| `resetBlockOrder` syncs pickers + chip | DONE | `resetBlockOrder` |
+| `resetPickersForNewPage` → `resetPickersToDefault` | DONE | renamed |
 | `is_snap_target` → `is_ux_baseline` rename | DONE | commit `7e6cad4`; zero greps for old name |
-| Dual picker → delta header (`baseLabel`) | DONE-ish | commit `3d30ce1` via `getColumnNlp(slot)` line 3885. **See T0 - Anna flags this as feels-off** |
+| Dual picker → delta header (`baseLabel`) | DONE-ish | commit `3d30ce1` via `getColumnNlp(slot)`. **T0 still open - not revisited this session** |
 | `ux_recipe_section` column | MOOT | Intentionally kept as curation reference; 995 v12 archetype rows. Do NOT drop |
-| V0 overwrite stub | OUTSTANDING | Toast at lab/index.html:4278; needs schema migration |
-| `labRearrangedNlp` stale on version switch | OUTSTANDING | Band-aid via `getColumnNlp` freshness check; cleaner fix wanted |
-| State centralization (~50 globals → dispatch) | OUTSTANDING | 673 declarations, zero scaffolding |
-| Render function split | OUTSTANDING | renderBlockList 236L, renderContainerHeader 133L |
-| Event delegation | OUTSTANDING | 48 inline handlers, zero delegated listeners |
-| Drag-drop module extraction | OUTSTANDING | Still monolithic |
-| CSS housekeeping | OUTSTANDING | 21 `!important`, button styles still duplicated |
-| Token aliases for soft colors | OUTSTANDING | Zero CSS vars for `#fef4f4` / `#fef3c7` / `#fffaeb` |
-| Magic constants | OUTSTANDING | Truncation lengths still inline |
-| Fetch timeouts | OUTSTANDING | 3 fetches, zero AbortController |
-| Debug logging toggle | OUTSTANDING | 26 console statements, no DEBUG flag |
-| Unit tests | OUTSTANDING | Zero infrastructure |
-| `.gitignore` (lost from `c29f073`) | OUTSTANDING | Trivial rebuild |
-| `</>` per-block + container diagnostic | DONE | commit `675e4d3` - but still listed as "idea" in memory doc line 101. Cross off |
-| Block deletion | PROMOTED | Anna changed mind from "deferred" to "DO need it" (memory line 112) |
+| T5 Favicon | **DONE May 17** | commits `ab01812` + `a4e6d1d`; lives in `lab/` (deploy root) |
+| T6 "Rearrangement Lab" rename | **DONE May 17** | renamed to "Page Lab" in `ab01812` |
+| T10 V0 overwrite | **DONE May 17** | commit `8dbee36`; `permutations.is_live_baseline` migration applied via MCP |
+| Pattern taxonomy substrate | **DONE May 17** | commits `6f9bf6b` + `2893de1` + `db516f3`; `lp_blocks.pattern_key` migration applied; `LAB_PATTERNS` enum hardcoded. See `memory/pattern-taxonomy-and-export.md` |
+| Plain-language export | **DONE May 17** | commit `6f9bf6b`; modal at `openPlainLanguageExport`; diff engine matches blocks by `block_id`; outline + TSV tables |
+| Auto-inherit container heading | **DONE May 17** | commit `36ca8a4` |
+| Entity count per version | **DONE May 17** | commits `36ca8a4` + `2893de1`; lives in scorecard footer (moved out of column headers) |
+| ToC sidebar | **DONE May 17** | commits `36ca8a4` + `db516f3`; binder-divider tab on left edge |
+| `</>` per-block + container diagnostic | DONE | commit `675e4d3` |
+| `labRearrangedNlp` stale on version switch | OUTSTANDING | Band-aid via `getColumnNlp` freshness check; cleaner fix wanted (T14) |
+| State centralization (~50 globals → dispatch) | OUTSTANDING (T13) | 673 declarations, zero scaffolding |
+| Render function split | OUTSTANDING (T15) | renderBlockList 236L, renderContainerHeader now 150+L |
+| Event delegation | OUTSTANDING (T16) | 50+ inline handlers (count grew with new pattern dropdown + export modal) |
+| Drag-drop module extraction | OUTSTANDING (T17) | Still monolithic |
+| CSS housekeeping | OUTSTANDING (T7-T9) | 21 `!important`, button styles still duplicated |
+| Token aliases for soft colors | OUTSTANDING | Zero CSS vars for soft bg colors |
+| Magic constants | OUTSTANDING (T4) | Truncation lengths still inline |
+| Fetch timeouts | OUTSTANDING (T2) | 3+ fetches, zero AbortController |
+| Debug logging toggle | OUTSTANDING (T3) | 26+ console statements, no DEBUG flag |
+| Unit tests | OUTSTANDING (T18) | Zero infrastructure |
+| `.gitignore` (lost from `c29f073`) | OUTSTANDING (T1) | Trivial rebuild |
+| Block deletion | OUTSTANDING (Cluster 3) | Anna confirmed needed; touches drag-drop logic |
 | matrix.html | EXISTS (uncoordinated) | Functional Supabase-wired prototype, built without Anna's co-design - see T22 |
+| Slot UI cleanup (decommissioned May 17, code still present) | NEW (post-May-17) | `+ assign slot` UI removed but `labSections` / `labRecipeSlots` / `openSlotPickerForContainer` / `assignSlotToContainer` all still in code. Audit before sweeping |
+| RLS disabled on `permutations` | NEW (flagged May 17) | Pre-existing security issue surfaced via Supabase advisor. Anon key has full read/write. Fix needs RLS enable + policies matching Lab/bridge access patterns |
+| Slot × intent diagnostic | OUTSTANDING (T19) | Highest exec leverage per north star §10 |
+| Pre-launch HTML in matrix | OUTSTANDING (T20) | Pre-launch is evidence, not benchmark |
+| Block drift gradient | OUTSTANDING (T21) | Activates dormant embeddings infra |
 
 ---
 
-## Strategic prioritization (recommended)
+## Strategic prioritization (recommended -- as of May 17 update)
 
-Funding window is short. Optimize for what makes Anna's pushback case land with execs, not what's elegant.
+Funding window is short. Optimize for what makes Anna's pushback case land with execs, not what's elegant. Cluster 1 captured-ideas + V0 overwrite shipped May 17 -- priorities below are the post-shipment view.
 
-**Priority 1 (this week-ish):**
-- **T0** Verify dual-picker rebuild against lost Netlify version. Blocks confidence in the editor's mental model.
-- **T19** Slot × intent diagnostic. Highest exec-legibility per north star §10 (#1 of three Phase 2 pull-forwards). Bridge already does the necessary NLP calls.
+**Priority 1 (next session):**
+- **T0** Verify dual-picker rebuild against lost Netlify version. Still open from May 16. Blocks confidence in the editor's mental model -- has been deferred two sessions in a row because Anna hasn't surfaced the Cowork Bean's session notes yet.
+- **T19** Slot × intent diagnostic. Highest exec-legibility per north star §10 (#1 of three Phase 2 pull-forwards). Bridge already does the necessary NLP calls. **Now also unblocked by the pattern taxonomy** -- the new `LAB_PATTERNS` enum gives canonical structural slot definitions that a diagnostic could check against ("Hero pattern's editable fields are H1; does the H1 content match commercial intent?").
 
 **Priority 2 (when capacity allows):**
-- **T22/T23** Matrix tool review + co-design. Anna's never looked at the existing prototype; co-design rule was violated.
+- **T22/T23** Matrix tool review + co-design. Anna's never looked at the existing prototype; co-design rule was violated. The plain-language export from May 17 (`buildPlainLanguageExport`) is the closest existing analogue -- co-design might want to build on its diff engine.
 - **T20** Pre-launch HTML loaded into matrix-of-versions view (stakeholder framing of trajectory).
 
 **Priority 3 (foundational, multi-session):**
-- **T13-T17** State + render refactor. Compounding value for any future feature work. Not directly exec-legible.
+- **T13-T17** State + render refactor. Compounding value for any future feature work. Not directly exec-legible. `renderContainerHeader` is now 150+ lines (grew with pattern dropdown wiring) -- T15 (render split) more attractive than it was.
 
 **Priority 4 (fill-cycles work):**
-- Quick wins (T1-T6), CSS hygiene (T7-T9), V0 overwrite (T10), testing (T18).
+- Remaining quick wins (T1-T4 -- T5 and T6 shipped), CSS hygiene (T7-T9), testing (T18).
 
 **Priority 5 (Anna-facing parking lot):**
-- **H** Anna's captured idea list (16 items) - promote when ready.
+- **H** Anna's captured idea list -- six items shipped May 17, ~12 still open. Promote when ready.
+
+**Priority 6 (newly surfaced May 17):**
+- RLS on `public.permutations` -- security cleanup, do alongside any other schema work in that area.
+- Legacy V0/V0.5 permutation backfill -- pre-May-17 rows lack `block_id` / `original_html`; re-saving upgrades them. Could be a one-time UPDATE migration if it gets annoying.
+- Slot machinery sweep -- the `+ assign slot` UI is decommissioned but the supporting code is intact. Optional cleanup; audit-heavy.
 
 ---
 
@@ -91,8 +110,8 @@ Each thread: what / why / size (relative complexity, not hours per north star §
 | T2 | Add fetch timeouts via AbortController on 3 fetch calls | small | lab/index.html:139, 1330, 4059 |
 | T3 | Add `DEBUG` flag gating ~26 console statements | small | lab/index.html (top + all log sites) |
 | T4 | Promote magic constants (truncation lengths, entity display limits) to named consts | small | lab/index.html (top of file) |
-| T5 | Add favicon (memory idea list line 96) | trivial | lab/index.html + asset |
-| T6 | Rename "Rearrangement Lab" if Anna picks a name (line 106) | trivial | lab/index.html + any nav labels |
+| ~~T5~~ | ~~Add favicon~~ | DONE May 17 | commits `ab01812` + `a4e6d1d` |
+| ~~T6~~ | ~~Rename "Rearrangement Lab"~~ | DONE May 17 as "Page Lab" | commit `ab01812` |
 
 **Opens:** Cleaner debugging surface; better failure modes on stalled network; faster iteration.
 
@@ -105,13 +124,9 @@ Each thread: what / why / size (relative complexity, not hours per north star §
 
 **Files:** `lab/styles.css`. **Opens:** Cleaner design-system surface. Nothing critical hangs on these.
 
-### T10 - V0 overwrite full implementation [schema work]
-**Why:** Currently stubbed with a toast and falls through to save-as-new. Anna explicitly wants the V0 overwrite path live so the live-baseline can be updated.
-**Size:** medium. Schema migration + JS wiring.
-**Starts:** Anna's go-ahead on the column name (`is_live_baseline` is the working name in comments).
-**Files:** Supabase `permutations` table (add column), `lab/index.html` `getCommitOverwriteTarget` (line ~4267), new `commitOverwriteV0()` paralleling `commitOverwriteV05`, remove stub toast.
-**Ends:** User on V0 in active picker + other slot blank + Commit → PATCHes the V0 row (vs save-as-new).
-**Opens:** Symmetry with V0.5 overwrite; live baseline can evolve as new container labels / GSC-faithful curation lands.
+### ~~T10 - V0 overwrite full implementation~~ [SHIPPED May 17]
+**Status:** DONE in commit `8dbee36`. Migration `add_is_live_baseline_to_permutations` applied via Supabase MCP. `commitOverwriteV0()` lives at ~line 4910 of `lab/index.html`. INSERT on first commit per slug, PATCH thereafter. Confirmation prompt before overwrite. Load-time swap of `labOriginalBlocks` / `labOriginalNlp` from the flagged row in `loadSelectedPage()`. Bug fix in `83c8c90`: legacy V0 rows without `original_html` now get hydrated via `regenerateBlockHtml`, and auto-`scoreOriginal` is skipped when V0 row has authoritative saved NLP (otherwise the blank-scorecard bug fires).
+**Followup:** Existing V0/V0.5 permutations saved before May 17 lack `block_id` and `original_html` -- the plain-language export diff treats them as everything-NEW/REMOVED. Re-saving upgrades. Optional one-time backfill migration if needed.
 
 ### T11 - Container label persistence [schema work, north star §10 sprint-side]
 **Why:** Container renames are session-only currently. Lost on page reload.
@@ -180,29 +195,34 @@ These are tightly related. T13 is the foundation; the others compose better on t
 **Starts:** Anna's co-design conversation - what shape, what columns, what data, what's forward-able for execs.
 **Files:** `matrix.html` (extend or rebuild), `permutations` table (already exists), `exportPermutations()` substrate.
 
-### H - Anna's captured idea list (16 items in memory line 94-112, prioritize when ready)
+### H - Anna's captured idea list (updated May 17)
 
-These came from Anna's running notes in `lab-state-and-followups.md`. Not all are at the same scale or urgency.
+Originally 16 items in memory line 94-112. Six shipped May 17, ~12 still open. The plain-language export deserved (and got) its own substrate writeup -- see `memory/pattern-taxonomy-and-export.md`.
 
+**SHIPPED May 17:**
+- ~~Favicon~~ (T5)
+- ~~Slide-in sidebar ToC~~ (now binder-divider tab on left edge)
+- ~~Entity count per version~~ (in scorecard footer)
+- ~~Auto-inherit container heading from top text~~
+- ~~Rename "Rearrangement Lab"~~ → "Page Lab" (T6)
+- ~~Version-win plain-language export~~ (with `LAB_PATTERNS` substrate)
+
+**Already shipped earlier:**
+- ~~`</>` button to inspect API payload~~ (`675e4d3`, May 15)
+
+**Still open:**
 - Marking "winning version" for tracking
 - Matrix as side-by-side delta sidebars (intersects T23)
-- Favicon (covered in T5)
 - Keyword lists / highlighting (covered in T12)
-- Slide-in sidebar ToC
-- Entity count per version (and per container)
 - Bootstrap-style container layout to mimic Figma
-- ~~`</>` button to inspect API payload~~ DONE in `675e4d3`
-- Auto-inherit container heading from top text
 - Entity + topic data → topic map / IA
 - Click entity in sidebar → highlight relevant containers
 - Entity colour-coding by type (PLACE vs PERSON)
-- Rename "Rearrangement Lab" (covered in T6)
 - Permutation-aware edit state tracking
-- Version-win plain-language export (for optimization guide)
 - Card duplication
 - Save reusable containers/blocks
 - In-line comments / notes
-- **NEW:** Block deletion (changed from "deferred" - memory line 112)
+- **Promoted to Cluster 3:** Block deletion (Anna changed mind from "deferred" to "DO need it")
 
 These need promotion to threads case-by-case; not all need to ship.
 
@@ -250,12 +270,14 @@ I (Track 2) — Anna-owned, parallel
 
 - `/home/user/nlpcompare/lab/index.html` — main dashboard, 5000+ lines, where most threads land
 - `/home/user/nlpcompare/lab/styles.css` — CSS surface for T7-T9
+- `/home/user/nlpcompare/lab/favicon.ico` + siblings — favicons live IN `lab/` because Netlify publishes from `lab/` as the deploy root (May 17 discovery). Repo-root copies are dead weight unless publish dir changes.
 - `/home/user/nlpcompare/matrix.html` — sibling tool prototype for T22-T23
 - `/home/user/nlpcompare/memory/lab-state-and-followups.md` — source-of-truth doc, update as threads ship
+- `/home/user/nlpcompare/memory/pattern-taxonomy-and-export.md` — May 17 substrate reference. Read before touching container header or scorecard.
 - `/home/user/nlpcompare/Signal Coherence - North Star.md` — settled decisions, framework context
-- Supabase tables: `permutations`, `lp_blocks`, `crawled_pages`, `recipe_slots`, `nlp_cache`. New tables proposed: `container_renames` (T11), `target_keywords` (T12). New column proposed: `permutations.is_live_baseline` (T10).
+- Supabase tables: `permutations`, `lp_blocks`, `crawled_pages`, `recipe_slots`, `nlp_cache`. New columns shipped May 17: `lp_blocks.pattern_key text`, `permutations.is_live_baseline boolean`. Still-proposed tables: `container_renames` (T11), `target_keywords` (T12).
 - Supabase edge function: `bridge` (NLP + SQL + cache, JWT-protected)
-- Netlify: `signal-coherence` site ID `cab32293-702d-4f95-9358-d293c666ff96`. Git-connected as of May 15.
+- Netlify: `signal-coherence` site ID `cab32293-702d-4f95-9358-d293c666ff96`. Git-connected as of May 15. Publish dir = `lab/`.
 
 ## Verification (for any thread that ships)
 
@@ -272,8 +294,12 @@ I (Track 2) — Anna-owned, parallel
 - `getColumnNlp(slot)` for any column-level data routing
 - `scoreContainersForLab({blocks, versionTag})` for per-version NLP refresh
 - `regenerateBlockHtml(b)` for HTML synthesis from block data
-- `commitOverwriteV05()` as the template for `commitOverwriteV0()` (T10)
-- `loadRecipeSlots()` + `labRecipeSlots` for any slot-picker work
+- `slimBlockForSnapshot(b)` (May 17) for the canonical persisted-block shape -- use for any new commit/save path
+- `commitOverwriteV0()` and `commitOverwriteV05()` -- template patterns for overwrite-vs-save-new logic
+- `LAB_PATTERNS` + `getPatternByKey(key)` for any pattern-aware UI/export work
+- `buildPlainLanguageExport(targetKey)` + `diffBlockSets` for any version-diff work (e.g., matrix-of-versions, change summaries)
+- `regenerateBlockHtml(b)` should be called whenever loading snapshot blocks that might lack `original_html`
+- ~~`loadRecipeSlots()` + `labRecipeSlots`~~ -- still loads but no UI surfaces it (pattern dropdown replaced slot UI). Don't reuse for new work; the data path is back-compat only
 - Entity-highlight infrastructure for T12 (reuse with new class + data source)
 - `exportPermutations()` for any matrix-of-versions work
 - Bridge edge function tools: `nlp_classify`, `nlp_analyze`, `sql`
