@@ -2008,19 +2008,43 @@ async function loadSelectedPage() {
     // row represents the most recent committed live-prod state, which may
     // differ from the underlying crawl snapshot.
     const liveBaseline = (labPermutations || []).find(p => p.is_live_baseline);
+    let haveValidV0Nlp = false;
     if (liveBaseline && Array.isArray(liveBaseline.blocks) && liveBaseline.blocks.length) {
-      labOriginalBlocks = liveBaseline.blocks.map(b => ({ ...b }));
-      labBlocks = liveBaseline.blocks.map(b => ({ ...b }));
+      // Snapshot blocks created before the always-include-original_html fix may
+      // be missing their original_html. Regen from title+body_text via
+      // regenerateBlockHtml so blocksToHtml() still produces real markup --
+      // otherwise re-scoring this V0 (or any edited descendant) sends an
+      // empty payload to the NLP API and silently wipes the scorecard.
+      const hydrate = b => {
+        const copy = { ...b };
+        if (!copy.original_html) copy.original_html = regenerateBlockHtml(copy);
+        return copy;
+      };
+      labOriginalBlocks = liveBaseline.blocks.map(hydrate);
+      labBlocks = liveBaseline.blocks.map(hydrate);
       labSections = Array.isArray(liveBaseline.sections) ? liveBaseline.sections.map(s => ({ ...s })) : [];
       labOriginalSections = labSections.map(s => ({ ...s }));
-      labOriginalNlp = liveBaseline.nlp_result || null;
+      // Prefer the saved nlp_result -- it was computed against the parsed
+      // (non-regenerated) HTML at save time, so it's the authoritative V0
+      // score. Skip the auto-scoreOriginal call when present; otherwise let
+      // it run normally and populate from a fresh fetch.
+      if (liveBaseline.nlp_result && (
+            (liveBaseline.nlp_result.categories && liveBaseline.nlp_result.categories.length) ||
+            (liveBaseline.nlp_result.entities && liveBaseline.nlp_result.entities.length))) {
+        labOriginalNlp = liveBaseline.nlp_result;
+        haveValidV0Nlp = true;
+      } else {
+        labOriginalNlp = null;
+      }
       labCollapsedContainers = new Set();
       labBlocks.forEach(b => { if (b.container_id) labCollapsedContainers.add(b.container_id); });
       renderBlockList();
+      if (haveValidV0Nlp) renderNlpDeltas();
     }
 
-    // Auto-score original: cache hit is instant, miss costs one API call (then cached)
-    scoreOriginal();
+    // Auto-score original: cache hit is instant, miss costs one API call (then
+    // cached). Skipped when V0 already has authoritative saved NLP data.
+    if (!haveValidV0Nlp) scoreOriginal();
     // Per-container scoring runs in parallel; cache hits are universal post-v12
     // baseline so it adds ~zero NLP cost. Populates pill in collapsed container
     // header + entities panel below blocks when expanded. Re-renders on completion.
@@ -4899,8 +4923,10 @@ function showSavePermInput() {
 // Snapshot helper: trims a Lab block down to the fields a permutation row
 // needs. Always includes stable identifiers (block_id, curation_block_id,
 // pattern_key) so the plain-language export diff engine can match blocks
-// across versions. All three commit paths (save-new, V0.5 overwrite, V0
-// overwrite) use this same shape.
+// across versions. Also always includes original_html so the saved
+// permutation is self-contained -- re-loading + re-scoring works without
+// needing the underlying curation/crawl data. All three commit paths
+// (save-new, V0.5 overwrite, V0 overwrite) use this same shape.
 function slimBlockForSnapshot(b) {
   const slim = {
     title: b.title,
@@ -4917,8 +4943,8 @@ function slimBlockForSnapshot(b) {
     block_id: b.block_id || null,
     curation_block_id: b.curation_block_id || null,
     pattern_key: b.pattern_key || null,
+    original_html: b.original_html || "",
   };
-  if (b.edited) slim.original_html = b.original_html;
   if (b.html_authored && b.body_html) slim.body_html = b.body_html;
   return slim;
 }
