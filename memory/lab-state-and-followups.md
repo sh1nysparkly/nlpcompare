@@ -77,15 +77,34 @@ Netlify-only (NEVER committed; lost when git auto-deploy from `main` overwrote p
 - **V0 overwrite**: stubbed. `getCommitOverwriteTarget()` returns `{ kind: "v0" }` but `showSavePermInput` shows a toast `"V0 overwrite needs a schema migration -- coming next pass. Falling back to 'save as new'."` and falls through. Real work: add `is_live_baseline` (or similar) column to `permutations`, then add `commitOverwriteV0()` paralleling `commitOverwriteV05`.
 - **Stale `labRearrangedNlp` on version switch**: `loadVersionIntoLab` doesn't clear `labRearrangedNlp`, so if user scores V7 then switches active to V8 without re-scoring, V8's column shows V7's old score. The freshness check in `getColumnNlp` compensates by routing to perm's `nlp_result` when `labRearrangedNlpVersionLabel` doesn't match `ver.shortLabel`. Band-aid in place; cleaner fix is to clear both `labRearrangedNlp` and `labRearrangedNlpVersionLabel` in `loadVersionIntoLab`.
 
-### Architectural threads (from the May 14 audit, lean scope kept us out of these)
+### Architectural threads (May 14 audit + May 17 reground; lean scope kept us out of these)
+
+Counts refreshed May 17 (drift from May 14 audit noted in parens):
 
 - ~50 global `let`/`const` state variables; no dispatch pattern. Real brittleness -- easy to mutate state and forget to call the right render function.
-- `renderBlockList()` is 204 lines; mixes section headers, blocks, container headers, and entity panels. Split per concern.
-- 34 inline `onclick=` attributes; replace with event delegation on `#block-list`.
+- `renderBlockList()` is **236 lines** (was 204); mixes section headers, blocks, container headers, and entity panels. Split per concern. `renderContainerHeader` is **133 lines** -- separate split target.
+- **48 inline `onclick=` attributes** (was 34); replace with event delegation on `#block-list`.
 - Drag-drop handlers all live in the same file; could extract to a module.
-- 19 `!important` declarations (mostly GridJS overrides).
+- **21 `!important` declarations** (was 19, mostly GridJS overrides).
 - Button base styles duplicated across `.outline-btn` / `.reset-btn` / `.group-btn` / `.clear-btn`.
 - No tests anywhere. Highest-leverage targets: NLP unwrapping (defensive against MCP response shapes), version-list builder, commit-overwrite-target detection.
+- 26 console statements with no DEBUG gate; 3 fetches with no AbortController/timeout; magic constants (truncation lengths, entity display limits) inline rather than promoted.
+
+**May 17 framing:** This is real work but it's long-game eng investment, NOT a prereq for the captured-ideas backlog. Time-box "just enough" before piling more features on top -- event delegation + stale `labRearrangedNlp` clear are the just-in-time pair (see "May 17 execution staging" below). Full refactor only worth it if 6+ more months of building on this codebase are planned.
+
+### May 17 execution staging
+
+Per the north star §10 May 17 recalibration: **V0 overwrite + captured-ideas backlog are the immediate-sprint Lab leverage** -- they make Anna's next round of Track 2 work (optimization-guide building + UX validation) materially less painful. Recommended staging for Bean-led work picking these up:
+
+**Cluster 1 -- Workflow wins, no refactor needed.** V0 overwrite + the easy captured-ideas (favicon, Lab rename, slide-in sidebar ToC, entity count per version + per container, auto-inherit container heading from top text, version-win plain-language export). Probably 1-2 sessions. Meaningful improvement to daily workflow.
+
+**Cluster 2 -- Light refactor, just-in-time.** Event delegation (replace the 48 inline handlers with one delegated listener on `#block-list`) + stale `labRearrangedNlp` clear in `loadVersionIntoLab` (cleaner fix for the band-aid noted in "Half-wired flows"). ~1 session. NOT the full state-centralization rabbit hole.
+
+**Cluster 3 -- Resume captured ideas on cleaner ground.** Marking winning version, entity colour-coding by type, click-entity-highlight-containers, permutation-aware edit state, card duplication, block deletion, in-line comments. Each gets its own thread when promoted -- they're not a single deliverable.
+
+**Cluster 4 (optional) -- Full refactor.** Full state centralization (~50 globals → labState + dispatch + subscribe), render-function split (renderBlockList 236L + renderContainerHeader 133L per-concern), drag-drop module extraction, test infrastructure. Worth it only if 6+ more months of building on this codebase are planned. Otherwise skip.
+
+Reading: don't do the full refactor first. Time-box to "just enough" (cluster 2) to keep velocity. Cluster-4 work is long-game eng investment, not a prereq for the captured-ideas backlog.
 
 ## Other fixes to capture
 
@@ -98,7 +117,7 @@ Netlify-only (NEVER committed; lost when git auto-deploy from `main` overwrote p
 - I want to add the slide-in sidebar ToC on the lefthand side to help validate tag structure/flow of the page
 - show a count of entities (might be informative to see if the count of unique entities goes up or down significantly with copy changes - I was thinking like, total # returned per version but at a container level might also be helpful?)
 - it'd be cool if each container operated like a bootstrap container and I could arrange the blocks in a way that mimics the Figma layout (easier to do audits/comparisons)
-- what about a little </> button inside containers or at the page level so I can look at exactly what's passed to the API (could help w troubleshooting/diagnostics)
+- ~~what about a little </> button inside containers or at the page level so I can look at exactly what's passed to the API (could help w troubleshooting/diagnostics)~~ **DONE May 15 in `675e4d3` (per-block `</>` toggle + container-level diagnostic popover)**
 - could the container heading/text automatically be inherited from the top text contained within?
 - as a future-us stretch goal might be cool to use this entity and topic data to create like a topic map/IA
 - what if when I click on an entity in the sidebar it sort of highlights the relevant container(s)? Like if I click Japan in the sidebar list of entities and the containers/blocks on the canvas that have Japan entities "highlighted" somehow?
@@ -109,4 +128,4 @@ Netlify-only (NEVER committed; lost when git auto-deploy from `main` overwrote p
 - ability to duplicate cards would be nice
 - further to that, being able to 'save' like - containers and blocks as reusable? so like, if they add a global thing I don't have to manually keep adding it from scratch on every page?
 - ability to add notes to self like in-line? like "comments" in Word or whatever? use cases: "maybe we try changing out 'Hotels' in this H2 in other versions?" kinda thing
-- changed my mind from a previous thing - DO need the ability to like, fully delete blocks b/c sometimes I add them by accident and they just take up space even when ghosted
+- changed my mind from a previous thing - DO need the ability to like, fully delete blocks b/c sometimes I add them by accident and they just take up space even when ghosted **(queued for cluster 3; touches drag-drop logic)**
