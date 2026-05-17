@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <title>Signal Coherence Dashboard</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridjs@5.0.2/dist/theme/mermaid.min.css" integrity="sha384-jZvDSsmGB9oGGT/4l9bHXGoAv1OxvG/cFmSo0dZaSqmBgvQTKDBFAMftlXTmMbNW" crossorigin="anonymous">
 <script src="https://cdn.jsdelivr.net/npm/gridjs@5.0.2/dist/gridjs.umd.js" integrity="sha384-/XXDzxe4FsGiAe50i/u9pY/Vy/uX654MHB1xoc1BJNnH1WXHhqHga9g3q5tF4gj7" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
@@ -20,14 +25,14 @@
     <p>Rearrange page sections, see how entity salience and topical categories shift. NLP via Google Cloud (results cached in Supabase).</p>
   </div>
   <div class="tab-nav">
-    <button class="tab-btn active" data-tab="tab-lab" onclick="switchTab('tab-lab')">Rearrangement Lab</button>
+    <button class="tab-btn active" data-tab="tab-lab" onclick="switchTab('tab-lab')">Page Lab</button>
     <button class="tab-btn" data-tab="tab-scorer" onclick="switchTab('tab-scorer')">NLP Scorer</button>
   </div>
 </header>
 
 <div id="errors"></div>
 
-<!-- ============ TAB: Rearrangement Lab ============ -->
+<!-- ============ TAB: Page Lab ============ -->
 <div id="tab-lab" class="tab-content active">
   <div class="lab-workspace" id="lab-workspace">
     <div class="lab-blocks-panel">
