@@ -1883,6 +1883,42 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   border-bottom: 1px solid var(--border-soft);
 }
 .scorecard-section:last-child { border-bottom: none; }
+/* Unique-entity counts footer. Sits below both scorecard sections so the
+   count values don't visually collide with salience scores in the table
+   headers. Mono font + uppercase mini-labels match the scorecard rhythm. */
+.scorecard-stats-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-soft);
+  background: var(--surface-hover);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.scorecard-stats-label {
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  margin-right: auto;
+}
+.scorecard-stats-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.scorecard-stats-version {
+  font-weight: 700;
+  color: var(--text);
+}
+.scorecard-stats-num {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+}
 .scorecard-section h5 {
   margin: 0 0 10px;
   font-family: var(--font-display);
@@ -2330,44 +2366,104 @@ footer {
   word-break: break-word;
 }
 
-/* Container pattern dropdown -- replaces the static container_label badge.
-   Styled as a colored pill matching the pattern's badge_color (set inline).
-   Flex: 1 so it occupies the same horizontal space the old span did. */
-.container-pattern-select {
-  flex: 1;
-  min-width: 0;
+/* Container pattern dropdown -- takes the place where "+ assign slot" used to
+   live. Styled to match the slot pill aesthetic: dashed outlined button when
+   empty (.is-empty), solid colored pill when assigned (.is-assigned, inline
+   background color from LAB_PATTERNS.badge_color). */
+.container-header .container-pattern-select {
   font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 12px;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 4px 8px;
+  white-space: nowrap;
   cursor: pointer;
-  letter-spacing: 0.01em;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
-  /* Keep the select chevron visible against colored backgrounds */
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path fill='%23fff' d='M1 3l4 4 4-4z'/></svg>");
   background-repeat: no-repeat;
-  background-position: right 8px center;
-  background-size: 10px;
-  padding-right: 24px;
+  background-position: right 9px center;
+  background-size: 9px;
+  transition: all 0.15s;
 }
-.container-pattern-select:hover { filter: brightness(1.05); }
-.container-pattern-select:focus {
+.container-header .container-pattern-select.is-empty {
+  background-color: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 22px 3px 9px;
+  border-radius: 9999px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 10 10'><path fill='%2364748b' d='M1 3l4 4 4-4z'/></svg>");
+}
+.container-header .container-pattern-select.is-empty:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background-color: var(--primary-soft);
+}
+.container-header .container-pattern-select.is-assigned {
+  border: none;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 22px 4px 11px;
+  border-radius: 9999px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 10 10'><path fill='%23fff' d='M1 3l4 4 4-4z'/></svg>");
+}
+.container-header .container-pattern-select.is-assigned:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 2px 8px -2px rgba(15, 23, 42, 0.25);
+}
+.container-header .container-pattern-select:focus {
   outline: 2px solid rgba(59, 130, 246, 0.4);
   outline-offset: 1px;
 }
-/* In-dropdown options use OS default text color (dark on white) so they're
-   readable when the user opens the select, even though the closed pill has
-   white text on a colored background. */
-.container-pattern-select option { color: #111; background: #fff; }
+.container-header .container-pattern-select option {
+  color: #111;
+  background: #fff;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Binder-divider tab -- persistent affordance on the left edge, like the
+   tab sticking out of a file folder. Vertical text, rounded right edge.
+   Translates with the sidebar so it always sits flush against the open
+   panel's right side. */
+.toc-binder-tab {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 51;
+  background: var(--surface-hover, #f3f4f6);
+  border: 1px solid var(--border, #e5e7eb);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  padding: 16px 6px;
+  cursor: pointer;
+  color: var(--text-muted, #6b7280);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  box-shadow: 2px 0 6px rgba(15, 23, 42, 0.06);
+  transition: transform 250ms ease, background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.toc-binder-tab:hover {
+  background: var(--primary-soft, #eef2ff);
+  color: var(--primary, #2563eb);
+  box-shadow: 3px 0 10px rgba(15, 23, 42, 0.10);
+}
+.toc-binder-tab-text {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  display: inline-block;
+}
+/* When sidebar is open, slide the tab to sit flush against its right edge. */
+body.toc-open .toc-binder-tab { transform: translateY(-50%) translateX(280px); }
 
 /* ToC sidebar -- slide-in heading outline. Fixed position so it overlays
    without reflowing the lab-workspace grid. Closed by default; toggle adds
-   .open which slides it in via translateX. */
+   .open which slides it in via translateX. The binder tab tracks it. */
 .toc-sidebar {
   position: fixed;
   top: 0;
