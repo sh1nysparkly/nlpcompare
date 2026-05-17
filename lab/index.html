@@ -735,10 +735,13 @@ const LAB_PATTERNS = [
   { key: "footer_cards", name: "Footer Cards",
     structure: "Single-row carousel of <=4 tall image cards w/ H3 product + CTA",
     editable: ["h3"], aria_pattern: null, badge_color: "#64748b" },
+  { key: "other", name: "Other/Misc",
+    structure: "Other",
+    editable: ["h2"], aria_pattern: null, badge_color: "#ffffff" },
   // Ghost = exclude from NLP scoring. Picked from the same dropdown so it
   // reuses the affordance; the export and category-routing code treats it as
   // a non-renderable marker pattern.
-  { key: "ghost", name: "Ghost",
+  { key: "ghost", name: "Ghost 👻",
     structure: "Excluded from NLP scoring + export. Use for chrome, off-template content, etc.",
     editable: [], aria_pattern: null, badge_color: "#9ca3af" },
 ];
