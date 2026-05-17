@@ -1991,6 +1991,23 @@ async function loadSelectedPage() {
 
     showWorkspace();
     await loadPermutations();
+
+    // If a live-baseline permutation exists for this page (is_live_baseline=true),
+    // use ITS blocks as V0 instead of the crawled/curation parse. The flagged
+    // row represents the most recent committed live-prod state, which may
+    // differ from the underlying crawl snapshot.
+    const liveBaseline = (labPermutations || []).find(p => p.is_live_baseline);
+    if (liveBaseline && Array.isArray(liveBaseline.blocks) && liveBaseline.blocks.length) {
+      labOriginalBlocks = liveBaseline.blocks.map(b => ({ ...b }));
+      labBlocks = liveBaseline.blocks.map(b => ({ ...b }));
+      labSections = Array.isArray(liveBaseline.sections) ? liveBaseline.sections.map(s => ({ ...s })) : [];
+      labOriginalSections = labSections.map(s => ({ ...s }));
+      labOriginalNlp = liveBaseline.nlp_result || null;
+      labCollapsedContainers = new Set();
+      labBlocks.forEach(b => { if (b.container_id) labCollapsedContainers.add(b.container_id); });
+      renderBlockList();
+    }
+
     // Auto-score original: cache hit is instant, miss costs one API call (then cached)
     scoreOriginal();
     // Per-container scoring runs in parallel; cache hits are universal post-v12
@@ -4670,12 +4687,16 @@ function getVersionList() {
   if (!labOriginalBlocks || labOriginalBlocks.length === 0) return [];
   const list = [];
 
+  // V0 = the live-prod baseline. Sourced from a flagged permutation
+  // (is_live_baseline=true) when one exists, else from the page-load blocks
+  // (parsed from crawled_pages or curation).
+  const liveBaseline = labPermutations.find(p => p.is_live_baseline);
   list.push({
     kind: "original",
     shortLabel: "V0",
-    dateLabel: "V0 — original",
-    tooltip: "Original (page-load baseline)",
-    perm: null,
+    dateLabel: liveBaseline ? ("V0 — " + formatVersionDate(liveBaseline.created_at)) : "V0 — original",
+    tooltip: liveBaseline ? (liveBaseline.label || "Live baseline") : "Original (page-load baseline)",
+    perm: liveBaseline || null,
   });
 
   // V0.5 = the UX-proposed baseline state for this page. Stored as a permutation
@@ -4692,8 +4713,9 @@ function getVersionList() {
   }
 
   // V1, V2, ... = experimental perms in chronological order (loadPermutations
-  // already returns ASC by created_at). V0.5 is excluded -- it's special.
-  const regular = labPermutations.filter(p => !p.is_ux_baseline);
+  // already returns ASC by created_at). V0.5 and V0-flagged rows excluded --
+  // both special.
+  const regular = labPermutations.filter(p => !p.is_ux_baseline && !p.is_live_baseline);
   regular.forEach((p, i) => {
     list.push({
       kind: "perm",
@@ -4821,9 +4843,8 @@ function showSavePermInput() {
   const target = getCommitOverwriteTarget();
   if (target) {
     if (target.kind === "v0") {
-      // Schema migration deferred; flag clearly until is_live_baseline lands.
-      showToast("V0 overwrite needs a schema migration -- coming next pass. Falling back to 'save as new'.");
-      // fall through to the label-input flow below so the user can still save
+      commitOverwriteV0();
+      return;
     } else if (target.kind === "v0.5") {
       if (window.confirm("Overwrite " + target.label + "?\n\nThis replaces the saved UX baseline with the current arrangement (blocks, sections, and most recent NLP).")) {
         commitOverwriteV05(target.perm);
@@ -4843,6 +4864,33 @@ function showSavePermInput() {
   });
 }
 
+// Snapshot helper: trims a Lab block down to the fields a permutation row
+// needs. Always includes stable identifiers (block_id, curation_block_id,
+// pattern_key) so the plain-language export diff engine can match blocks
+// across versions. All three commit paths (save-new, V0.5 overwrite, V0
+// overwrite) use this same shape.
+function slimBlockForSnapshot(b) {
+  const slim = {
+    title: b.title,
+    body_text: b.body_text,
+    level: b.level,
+    word_count: b.word_count,
+    container_id: b.container_id,
+    container_label: b.container_label,
+    container_label_source: b.container_label_source || null,
+    section_id: b.section_id,
+    edited: b.edited || false,
+    is_ghost: !!b.is_ghost,
+    html_authored: !!b.html_authored,
+    block_id: b.block_id || null,
+    curation_block_id: b.curation_block_id || null,
+    pattern_key: b.pattern_key || null,
+  };
+  if (b.edited) slim.original_html = b.original_html;
+  if (b.html_authored && b.body_html) slim.body_html = b.body_html;
+  return slim;
+}
+
 async function commitOverwriteV05(existingPerm) {
   if (!existingPerm || !existingPerm.id) {
     showToast("Can't overwrite -- existing V0.5 row missing.");
@@ -4850,23 +4898,7 @@ async function commitOverwriteV05(existingPerm) {
   }
   showToast("Overwriting V0.5...");
 
-  const trimmedBlocks = labBlocks.map(b => {
-    const slim = {
-      title: b.title,
-      body_text: b.body_text,
-      level: b.level,
-      word_count: b.word_count,
-      container_id: b.container_id,
-      container_label: b.container_label,
-      section_id: b.section_id,
-      edited: b.edited || false,
-      is_ghost: !!b.is_ghost,
-      html_authored: !!b.html_authored,
-    };
-    if (b.edited) slim.original_html = b.original_html;
-    if (b.html_authored && b.body_html) slim.body_html = b.body_html;
-    return slim;
-  });
+  const trimmedBlocks = labBlocks.map(slimBlockForSnapshot);
 
   const patch = {
     blocks: trimmedBlocks,
@@ -4896,6 +4928,64 @@ async function commitOverwriteV05(existingPerm) {
   }
 }
 
+async function commitOverwriteV0() {
+  // Higher-stakes than V0.5 overwrite -- V0 is the live-prod reference, so
+  // confirm explicitly. Native confirm() is fine for v1; can become a styled
+  // modal later if the friction matters.
+  const proceed = window.confirm(
+    "Overwrite V0 (live prod baseline) for this page?\n\n" +
+    "This becomes the new comparison reference for all future analysis. " +
+    "Use this when you've updated the actual live page and want the Lab to know."
+  );
+  if (!proceed) return;
+  showToast("Overwriting V0...");
+
+  const trimmedBlocks = labBlocks.map(slimBlockForSnapshot);
+  const existing = (labPermutations || []).find(p => p.is_live_baseline);
+
+  try {
+    if (existing && existing.id) {
+      await postgrest("/permutations?id=eq." + encodeURIComponent(existing.id), {
+        method: "PATCH",
+        body: {
+          blocks: trimmedBlocks,
+          sections: labSections,
+          nlp_result: labRearrangedNlp || existing.nlp_result || null,
+        },
+      });
+    } else {
+      // First-time INSERT: create the flagged row.
+      await postgrest("/permutations", {
+        method: "POST",
+        body: {
+          slug: labSlug,
+          crawl_date: labCrawlDate,
+          source: labSource,
+          label: "Live baseline (V0)",
+          is_live_baseline: true,
+          blocks: trimmedBlocks,
+          sections: labSections,
+          nlp_result: labRearrangedNlp || labOriginalNlp || null,
+        },
+      });
+    }
+    await loadPermutations();
+    // Keep cursor pointed at V0 after the overwrite.
+    const list = getVersionList();
+    const v0Idx = list.findIndex(v => v.kind === "original");
+    if (v0Idx !== -1) {
+      pickerCursors[activePickerSlot] = v0Idx;
+      labVersionCursor = v0Idx;
+      syncLegacyPermIndex();
+    }
+    renderNlpDeltas();
+    showToast("V0 overwritten with current arrangement.");
+  } catch (e) {
+    console.error("commitOverwriteV0 error:", e);
+    showToast("Overwrite failed: " + e.message);
+  }
+}
+
 function cancelSavePermInput() {
   const area = document.getElementById("save-perm-input");
   const input = document.getElementById("perm-label-input");
@@ -4917,23 +5007,7 @@ async function commitSavePermutation() {
   const sourceSections = labSections;
   const sourceNlp = labRearrangedNlp;
 
-  const trimmedBlocks = rawBlocks.map(b => {
-    const slim = {
-      title: b.title,
-      body_text: b.body_text,
-      level: b.level,
-      word_count: b.word_count,
-      container_id: b.container_id,
-      container_label: b.container_label,
-      section_id: b.section_id,
-      edited: b.edited || false,
-      is_ghost: !!b.is_ghost,
-      html_authored: !!b.html_authored,
-    };
-    if (b.edited) slim.original_html = b.original_html;
-    if (b.html_authored && b.body_html) slim.body_html = b.body_html;
-    return slim;
-  });
+  const trimmedBlocks = rawBlocks.map(slimBlockForSnapshot);
 
   const row = {
     slug: labSlug,
