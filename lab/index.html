@@ -48,6 +48,7 @@
             <button class="reset-btn" onclick="resetBlockOrder()" title="Restore block order, sections, and edits to the current baseline">Reset to baseline</button>
             <button class="outline-btn" onclick="collapseAllContainers()" title="Collapse all containers (page outline view)">Collapse all</button>
             <button class="outline-btn" onclick="expandAllContainers()" title="Expand all containers">Expand all</button>
+            <button class="outline-btn" id="btn-toggle-toc" onclick="toggleTocSidebar()" title="Toggle heading outline sidebar">ToC</button>
             <!-- "Showing V*X*" chip slots in here, rendered by renderCanvasShowingChip(). -->
             <span id="canvas-showing-chip-slot"></span>
           </div>
@@ -92,6 +93,17 @@
       </div>
     </div>
   </div>
+
+  <!-- Heading-outline slide-in sidebar. Validates tag structure / flow of the
+       current arrangement. Fixed-position so it overlays without reflowing
+       the grid; toggle via the ToC button in panel-head-actions. -->
+  <aside id="toc-sidebar" class="toc-sidebar" aria-hidden="true">
+    <div class="toc-sidebar-head">
+      <h4>Heading outline</h4>
+      <button class="toc-close-btn" onclick="toggleTocSidebar()" aria-label="Close sidebar" title="Close">&times;</button>
+    </div>
+    <div class="toc-sidebar-body" id="toc-sidebar-body"></div>
+  </aside>
 </div>
 
 <!-- ============ TAB: NLP Scorer ============ -->
@@ -1752,13 +1764,14 @@ function renderContainerEntitiesPanel(containerId) {
     if (!e || !e.name) continue;
     if (!map[e.name] || e.salience > map[e.name]) map[e.name] = e.salience;
   }
+  const uniqueCount = Object.keys(map).length;
   const top = Object.keys(map)
     .sort((a, b) => map[b] - map[a])
     .slice(0, 8);
   if (!top.length) return "";
 
   let html = '<div class="container-entities-panel">';
-  html += '<div class="container-entities-label">Top entities in this container</div>';
+  html += '<div class="container-entities-label">Top entities in this container (' + uniqueCount + ' unique)</div>';
   html += '<div class="container-entities-list">';
   for (const name of top) {
     html += '<span class="container-entity">' +
@@ -2183,6 +2196,46 @@ function renderBlockList() {
   container.innerHTML = html;
   document.getElementById("lab-block-count").textContent = `${labBlocks.length} blocks`;
   updateSelectionUI();
+  // Keep the ToC outline in sync if it's currently open. Skip work when closed
+  // so we don't pay the walk cost on every render.
+  const tocEl = document.getElementById("toc-sidebar");
+  if (tocEl && tocEl.classList.contains("open")) renderTocSidebar();
+}
+
+// ToC sidebar: heading-outline view of the current arrangement. Slide-in from
+// the left, fixed-position so it overlays without reflowing the grid. Walks
+// labBlocks in order and emits nested heading entries grouped by container.
+function toggleTocSidebar() {
+  const sidebar = document.getElementById("toc-sidebar");
+  if (!sidebar) return;
+  const isOpen = sidebar.classList.toggle("open");
+  sidebar.setAttribute("aria-hidden", isOpen ? "false" : "true");
+  if (isOpen) renderTocSidebar();
+}
+
+function renderTocSidebar() {
+  const body = document.getElementById("toc-sidebar-body");
+  if (!body) return;
+  if (!labBlocks.length) {
+    body.innerHTML = '<div class="toc-empty">No content loaded.</div>';
+    return;
+  }
+  let html = '';
+  let lastContainerId = null;
+  for (const block of labBlocks) {
+    if (block.container_id !== lastContainerId) {
+      const label = block.container_label || "(unlabeled)";
+      html += '<div class="toc-container-label">' + escapeHtml(label) + '</div>';
+      lastContainerId = block.container_id;
+    }
+    if (block.level >= 1 && block.level <= 4 && block.title) {
+      html += '<div class="toc-heading toc-h' + block.level + '" title="' + escapeHtml(block.title) + '">' +
+                '<span class="toc-level">h' + block.level + '</span>' +
+                '<span class="toc-text">' + escapeHtml(block.title) + '</span>' +
+              '</div>';
+    }
+  }
+  body.innerHTML = html;
 }
 
 function onEndZoneDragOver(e) {
@@ -2229,6 +2282,24 @@ function onEndZoneDrop(e) {
 }
 
 function renderContainerHeader(firstBlock, totalBlocks, isFirst, minLevel) {
+  // Auto-inherit container label from first block's heading text when the
+  // current label is a fallback or previously auto-inherited (not user-edited,
+  // not curation-locked) and the first block carries a heading title that
+  // differs from the currently-displayed label.
+  const inheritSources = new Set(["fallback-heading", "auto-inherited"]);
+  if (inheritSources.has(firstBlock.container_label_source)
+      && firstBlock.level >= 1
+      && firstBlock.title
+      && firstBlock.title !== firstBlock.container_label) {
+    const inheritedLabel = firstBlock.title;
+    labBlocks.forEach(b => {
+      if (b.container_id === firstBlock.container_id) {
+        b.container_label = inheritedLabel;
+        b.container_label_source = "auto-inherited";
+      }
+    });
+  }
+
   const label = firstBlock.container_label || "(unlabeled)";
   const source = firstBlock.container_label_source || "";
   const isExternal = !!firstBlock.container_external_widget;
@@ -2400,8 +2471,12 @@ function onContainerLabelBlur(e) {
     return;
   }
   // Update every block in this container so subsequent renders reflect the new label.
+  // Mark source as "manual" so the auto-inherit pass in renderContainerHeader won't clobber.
   labBlocks.forEach(b => {
-    if (b.container_id === containerId) b.container_label = newLabel;
+    if (b.container_id === containerId) {
+      b.container_label = newLabel;
+      b.container_label_source = "manual";
+    }
   });
   containerLabelOriginal = null;
 }
@@ -3992,8 +4067,9 @@ function renderEntitiesScorecard(origEnts, newEnts) {
   }
 
   if (newEnts === null) {
+    const baseCount = Object.keys(origMap).length;
     const names = Object.keys(origMap).sort((a, b) => origMap[b] - origMap[a]).slice(0, TOP_N);
-    html += '<table class="ent-table"><thead><tr><th>Entity</th><th class="num">Base</th></tr></thead><tbody>';
+    html += '<table class="ent-table"><thead><tr><th>Entity</th><th class="num">Base (' + baseCount + ')</th></tr></thead><tbody>';
     for (const name of names) {
       html += '<tr><td class="ent-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</td>' +
         '<td class="ent-base num">' + origMap[name].toFixed(2) + '</td></tr>';
@@ -4004,17 +4080,21 @@ function renderEntitiesScorecard(origEnts, newEnts) {
     for (const e of newEnts) {
       if (!newMap[e.name] || e.salience > newMap[e.name]) newMap[e.name] = e.salience;
     }
+    const baseCount = Object.keys(origMap).length;
+    const newCount = Object.keys(newMap).length;
     const allNames = [...new Set([...Object.keys(origMap), ...Object.keys(newMap)])];
     allNames.sort((a, b) => Math.max(newMap[b] || 0, origMap[b] || 0) - Math.max(newMap[a] || 0, origMap[a] || 0));
     const top = allNames.slice(0, TOP_N);
 
     // Match the categories pattern: name | base | → | new | ±delta-pill.
     // Same visual structure across both scorecards so the eye scans them the same way.
+    // Column headers carry unique-entity counts so copy-change effects on
+    // vocabulary breadth are visible at a glance.
     html += '<table class="ent-table"><thead><tr>' +
       '<th>Entity</th>' +
-      '<th class="num">Base</th>' +
+      '<th class="num">Base (' + baseCount + ')</th>' +
       '<th></th>' +
-      '<th class="num">Now</th>' +
+      '<th class="num">Now (' + newCount + ')</th>' +
       '<th class="num">Δ</th>' +
       '</tr></thead><tbody>';
     for (const name of top) {
