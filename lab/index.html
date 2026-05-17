@@ -738,7 +738,7 @@ const LAB_PATTERNS = [
   // Ghost = exclude from NLP scoring. Picked from the same dropdown so it
   // reuses the affordance; the export and category-routing code treats it as
   // a non-renderable marker pattern.
-  { key: "ghost", name: "Ghost (exclude from scoring)",
+  { key: "ghost", name: "Ghost",
     structure: "Excluded from NLP scoring + export. Use for chrome, off-template content, etc.",
     editable: [], aria_pattern: null, badge_color: "#9ca3af" },
 ];
@@ -2523,8 +2523,8 @@ function renderContainerHeader(firstBlock, totalBlocks, isFirst, minLevel) {
           ' title="View the HTML this container sends to the NLP API"' +
           ' aria-label="View container HTML">&lt;/&gt;</button>';
 
-  html += '<span class="container-meta">' + totalBlocks +
-          (totalBlocks === 1 ? ' block' : ' blocks') + '</span>';
+  // Block count removed -- reclaims horizontal real estate in the cramped
+  // container header. Count still surfaces in the panel header total.
 
   // + Block button: append a new editable block to this container.
   html += '<button class="container-add-block-btn"' +

@@ -2377,19 +2377,24 @@ footer {
   appearance: none;
   -webkit-appearance: none;
   background-repeat: no-repeat;
-  background-position: right 9px center;
-  background-size: 9px;
+  background-position: right 7px center;
+  background-size: 8px;
   transition: all 0.15s;
+  /* Shrink-fit to the SELECTED option's text instead of sizing to the widest
+     option (default <select> behavior). Supported in modern Chrome/Safari/
+     Firefox; falls back to default sizing where unsupported. */
+  field-sizing: content;
+  max-width: 100%;
 }
 .container-header .container-pattern-select.is-empty {
   background-color: transparent;
   border: 1px dashed var(--border-strong);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
-  padding: 3px 22px 3px 9px;
+  padding: 2px 17px 2px 8px;
   border-radius: 9999px;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 10 10'><path fill='%2364748b' d='M1 3l4 4 4-4z'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 10 10'><path fill='%2364748b' d='M1 3l4 4 4-4z'/></svg>");
 }
 .container-header .container-pattern-select.is-empty:hover {
   border-color: var(--primary);
@@ -2399,13 +2404,13 @@ footer {
 .container-header .container-pattern-select.is-assigned {
   border: none;
   color: #fff;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 4px 22px 4px 11px;
+  letter-spacing: 0.04em;
+  padding: 3px 17px 3px 9px;
   border-radius: 9999px;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 10 10'><path fill='%23fff' d='M1 3l4 4 4-4z'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 10 10'><path fill='%23fff' d='M1 3l4 4 4-4z'/></svg>");
 }
 .container-header .container-pattern-select.is-assigned:hover {
   filter: brightness(1.08);
