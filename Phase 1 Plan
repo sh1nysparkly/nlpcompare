@@ -1,0 +1,279 @@
+# Reconciliation + macro plan: nlpcompare (Signal Coherence Lab)
+
+## Context
+
+Anna's been working on the Lab dashboard across multiple machines, multiple Code Bean sessions, Cowork Bean sessions, and manual fixes - some landing on the repo's `main` branch, some landing only on Netlify before the git-connection was wired, some captured in session notes that have since drifted from actual state. Three real consequences:
+
+1. Session-note "outstanding" items have shipped without the notes being updated.
+2. Three Cowork-Bean Netlify-only fixes (`c29f073`, `fee08ec`, `ff336dc`) were overwritten on May 15 when git auto-deploy from `main` first fired. Two were rebuilt in commits `3d30ce1` and `675e4d3`; one (`.gitignore`) was lost.
+3. The rebuilt dual-picker fix (`3d30ce1`) "feels off" to Anna vs the lost Netlify-only version - load-bearing concern about the editor's core mental model.
+
+Plus: this is Anna's last high-leverage window before AMA Travel website remediation funding is cut (~June 2026 per north star §8). The macro plan needs to support the funding-window goal (exec-legible artifacts, slot-level diagnostic, matrix-of-versions stakeholder view) alongside the dev-debt cleanup.
+
+This plan exists to reset to ground truth and produce a dependency-mapped set of pick-up-able threads.
+
+---
+
+## Status snapshot (May 16, 2026)
+
+Numbers verified via Explore-agent reconnaissance against `lab/index.html`, `lab/styles.css`, `memory/lab-state-and-followups.md`, and git log.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Snap-to-recipe machinery removed | DONE | commit `ff103bf`; zero greps |
+| `.canvas-showing-chip` restyled | DONE | styles.css:1758-1775 vs 1229-1245 |
+| Inline `<style>` extracted to `lab/styles.css` | DONE | lab/index.html:12 link tag |
+| V0.5 picker entry + filter | DONE | `kind: "ux_baseline"` at line 4139 |
+| `setAsBaseline` / `labBaselineVersionRef` cleanup | DONE | commit `5545b54`; zero greps |
+| `resetBlockOrder` syncs pickers + chip | DONE | line 3710 |
+| `resetPickersForNewPage` → `resetPickersToDefault` | DONE | lines 3741, 3764, 3867 |
+| `is_snap_target` → `is_ux_baseline` rename | DONE | commit `7e6cad4`; zero greps for old name |
+| Dual picker → delta header (`baseLabel`) | DONE-ish | commit `3d30ce1` via `getColumnNlp(slot)` line 3885. **See T0 - Anna flags this as feels-off** |
+| `ux_recipe_section` column | MOOT | Intentionally kept as curation reference; 995 v12 archetype rows. Do NOT drop |
+| V0 overwrite stub | OUTSTANDING | Toast at lab/index.html:4278; needs schema migration |
+| `labRearrangedNlp` stale on version switch | OUTSTANDING | Band-aid via `getColumnNlp` freshness check; cleaner fix wanted |
+| State centralization (~50 globals → dispatch) | OUTSTANDING | 673 declarations, zero scaffolding |
+| Render function split | OUTSTANDING | renderBlockList 236L, renderContainerHeader 133L |
+| Event delegation | OUTSTANDING | 48 inline handlers, zero delegated listeners |
+| Drag-drop module extraction | OUTSTANDING | Still monolithic |
+| CSS housekeeping | OUTSTANDING | 21 `!important`, button styles still duplicated |
+| Token aliases for soft colors | OUTSTANDING | Zero CSS vars for `#fef4f4` / `#fef3c7` / `#fffaeb` |
+| Magic constants | OUTSTANDING | Truncation lengths still inline |
+| Fetch timeouts | OUTSTANDING | 3 fetches, zero AbortController |
+| Debug logging toggle | OUTSTANDING | 26 console statements, no DEBUG flag |
+| Unit tests | OUTSTANDING | Zero infrastructure |
+| `.gitignore` (lost from `c29f073`) | OUTSTANDING | Trivial rebuild |
+| `</>` per-block + container diagnostic | DONE | commit `675e4d3` - but still listed as "idea" in memory doc line 101. Cross off |
+| Block deletion | PROMOTED | Anna changed mind from "deferred" to "DO need it" (memory line 112) |
+| matrix.html | EXISTS (uncoordinated) | Functional Supabase-wired prototype, built without Anna's co-design - see T22 |
+
+---
+
+## Strategic prioritization (recommended)
+
+Funding window is short. Optimize for what makes Anna's pushback case land with execs, not what's elegant.
+
+**Priority 1 (this week-ish):**
+- **T0** Verify dual-picker rebuild against lost Netlify version. Blocks confidence in the editor's mental model.
+- **T19** Slot × intent diagnostic. Highest exec-legibility per north star §10 (#1 of three Phase 2 pull-forwards). Bridge already does the necessary NLP calls.
+
+**Priority 2 (when capacity allows):**
+- **T22/T23** Matrix tool review + co-design. Anna's never looked at the existing prototype; co-design rule was violated.
+- **T20** Pre-launch HTML loaded into matrix-of-versions view (stakeholder framing of trajectory).
+
+**Priority 3 (foundational, multi-session):**
+- **T13-T17** State + render refactor. Compounding value for any future feature work. Not directly exec-legible.
+
+**Priority 4 (fill-cycles work):**
+- Quick wins (T1-T6), CSS hygiene (T7-T9), V0 overwrite (T10), testing (T18).
+
+**Priority 5 (Anna-facing parking lot):**
+- **H** Anna's captured idea list (16 items) - promote when ready.
+
+---
+
+## Threads (pick-up-able units)
+
+Each thread: what / why / size (relative complexity, not hours per north star §5) / where it starts / where it ends / what it opens up.
+
+### T0 - Reconcile dual-picker rebuild against lost Netlify version [URGENT]
+**Why:** Anna's gut says `3d30ce1` (rebuild of lost `ff336dc`) "feels off" vs the Netlify-only version. The dual picker is the editor's core mental model - if the rebuild diverged, every comparison built on it is suspect.
+**Size:** small-to-medium. Bounded comparison work.
+**Starts:** Anna shares the Cowork Bean's notes from the Netlify-only `ff336dc` session.
+**Files:** `lab/index.html` around `getColumnNlp(slot)` (line ~3885), `renderNlpDeltas`, `memory/lab-state-and-followups.md` §"Scorecard columns map directly to picker slots."
+**Ends:** Either (a) rebuild matches intent and Anna's gut is reassured, or (b) divergence identified and a corrective patch is shipped.
+**Opens:** Trust in the editor. Unblocks any further work on column-related features.
+
+### T1-T6 - Quick wins (small, independent, any order)
+| # | Thread | Size | Files |
+|---|---|---|---|
+| T1 | Recreate `.gitignore` from lost `c29f073` (`.netlify/` + OS noise) | trivial | repo root |
+| T2 | Add fetch timeouts via AbortController on 3 fetch calls | small | lab/index.html:139, 1330, 4059 |
+| T3 | Add `DEBUG` flag gating ~26 console statements | small | lab/index.html (top + all log sites) |
+| T4 | Promote magic constants (truncation lengths, entity display limits) to named consts | small | lab/index.html (top of file) |
+| T5 | Add favicon (memory idea list line 96) | trivial | lab/index.html + asset |
+| T6 | Rename "Rearrangement Lab" if Anna picks a name (line 106) | trivial | lab/index.html + any nav labels |
+
+**Opens:** Cleaner debugging surface; better failure modes on stalled network; faster iteration.
+
+### T7-T9 - CSS hygiene (independent thread, ideally one session)
+| # | Thread | Notes |
+|---|---|---|
+| T7 | Button base + modifier dedupe (`.outline-btn` / `.reset-btn` / `.group-btn` / `.clear-btn`) | Real BEM base + modifiers |
+| T8 | Token aliases for soft-color bgs (`#fef4f4` → `--bg-error-soft`, etc.) | Promotes design-system consistency |
+| T9 | Reduce `!important` count (21 currently, mostly GridJS overrides) - reduce only where defensible | Some may need to stay (specificity battles with library CSS) |
+
+**Files:** `lab/styles.css`. **Opens:** Cleaner design-system surface. Nothing critical hangs on these.
+
+### T10 - V0 overwrite full implementation [schema work]
+**Why:** Currently stubbed with a toast and falls through to save-as-new. Anna explicitly wants the V0 overwrite path live so the live-baseline can be updated.
+**Size:** medium. Schema migration + JS wiring.
+**Starts:** Anna's go-ahead on the column name (`is_live_baseline` is the working name in comments).
+**Files:** Supabase `permutations` table (add column), `lab/index.html` `getCommitOverwriteTarget` (line ~4267), new `commitOverwriteV0()` paralleling `commitOverwriteV05`, remove stub toast.
+**Ends:** User on V0 in active picker + other slot blank + Commit → PATCHes the V0 row (vs save-as-new).
+**Opens:** Symmetry with V0.5 overwrite; live baseline can evolve as new container labels / GSC-faithful curation lands.
+
+### T11 - Container label persistence [schema work, north star §10 sprint-side]
+**Why:** Container renames are session-only currently. Lost on page reload.
+**Size:** small-to-medium.
+**Files:** Supabase new `container_renames` table keyed on `(slug, container_id)`, wired into Lab load + `onContainerLabelBlur`.
+
+### T12 - Target keyword highlighting [schema + feature, north star §10 sprint-side]
+**Why:** Load-bearing for editing workflow per north star §10 - without it, easy to accidentally cut target keywords. Distinct from entity highlighting.
+**Size:** medium. New table + UI layer + data load.
+**Files:** Supabase `target_keywords` table from a spreadsheet, entity-highlight infrastructure reused with new class + data source.
+**Opens:** Anna can edit without the "did I just nuke a target keyword?" anxiety.
+
+### T13-T17 - State + render refactor [interlocked, multi-session, foundational]
+
+These are tightly related. T13 is the foundation; the others compose better on top of it but can technically run independently.
+
+| # | Thread | Size | Dependency |
+|---|---|---|---|
+| T13 | State centralization: `labState` object + `dispatch(action, payload)` + `subscribe()` mechanism | large | foundation |
+| T14 | Stale `labRearrangedNlp` cleaner fix: clear `labRearrangedNlp` + `labRearrangedNlpVersionLabel` in `loadVersionIntoLab` | small | rides with T13 ideally |
+| T15 | Render function split: `renderBlockList` (236L) + `renderContainerHeader` (133L) into per-concern renders | medium | cleaner on top of T13 |
+| T16 | Event delegation: replace 48 inline handlers with one delegated listener on `#block-list` | small-to-medium | can predate T13 but cleaner after |
+| T17 | Drag-drop module extraction: `dragSrcIndex`, `dragSrcSectionId`, `onDragStart`, `onDrop`, `onDragEnd` → own module | medium | independent-ish |
+
+**Files:** `lab/index.html` (current state + handlers all live here).
+**Opens:** Lower brittleness, easier to add features, easier to test, possibility of splitting `lab/index.html` into actual modules.
+
+### T18 - Testing infrastructure
+**Why:** Zero tests currently. Foundational for confidence in T13-T17 refactor.
+**Size:** small to start (test runner + 3 unit tests), grows over time.
+**Starts:** Pick a runner (vanilla Node test, vitest, etc).
+**Ends:** Tests pass for: NLP unwrapping (defensive against MCP response shapes), version-list builder (`getVersionList`), commit-overwrite-target detection (`getCommitOverwriteTarget`).
+**Opens:** Refactor confidence. Future Bean catches regressions on PR.
+
+### T19 - Slot × intent diagnostic [Phase 2 pull-forward, HIGHEST exec leverage]
+**Why:** Per north star §10, this is the #1 Phase 2 bit worth pulling forward. Surfaces things like "this commercial LP's hero slot is reading 70% informational." Bridge already does the NLP calls.
+**Size:** medium. Per-slot NLP dispatch + UI surfacing.
+**Starts:** Inventory current slot dispatch (probably uses whole-page NLP). Design per-slot NLP request pattern using bridge edge function (`nlp_classify` or `nlp_analyze`).
+**Files:** `lab/index.html` (NLP dispatch path + new UI surface), possibly `nlp_cache` table reads.
+**Ends:** Each slot shows dominant category + confidence. Anna can point at "your Travel Expertise slot is 40% Insurance" without statistical literacy in the room.
+**Opens:** Exec-legible artifact for the pushback case. Directly actionable (fix is in the slot content).
+
+### T20 - Pre-launch HTML in matrix-of-versions view [Phase 2 pull-forward]
+**Why:** Stakeholder artifact - frames the case as "here's the trajectory" rather than "here's what's wrong with UX's proposal." Per north star §10 #2.
+**Size:** medium. Loader script adaptation + matrix wiring.
+**Files:** `signal-coherence/scripts/load_may8_crawl.py` adapted with `source='pre-launch-aug2025'` (or whatever the equivalent in this repo's structure is - the repo seems flatter than the north star describes), `crawled_pages` table loads, `matrix.html` updates.
+**Note:** Pre-launch is evidence, not benchmark (north star §9).
+**Opens:** Pre-launch | current | UX proposal | optimized variant matrix per page.
+
+### T21 - Block drift gradient [Phase 2 pull-forward]
+**Why:** Embeddings infrastructure exists but is dormant. Surfaces blocks that drift from topical centroid - argues "this block shouldn't be there at all" vs "UX should move it." Per north star §10 #3.
+**Size:** medium-to-large. Embed each block + page centroid, cosine similarity, visible gradient (no threshold per settled decision §5).
+**Files:** New embeddings dispatch, new UI underlay layer on blocks, no threshold math.
+**Opens:** Different leverage class - "better than UX" vs "safer than UX."
+
+### T22 - Matrix.html review [co-design reset]
+**Why:** A Bean built `matrix.html` without Anna's co-design - violated the rule in `memory/co-design-surfaces-with-anna.md`. Anna's never looked at it; her own ideas for it (e.g., "what if the matrix was just like, side-by-side versions of the delta sidebar" - memory line 95) probably didn't make it in.
+**Size:** Anna review + decision call. Small for the review; what comes after is co-design scope.
+**Starts:** Anna opens matrix.html in browser (signal-coherence.netlify.app/matrix.html? Need to confirm it's deployed) or locally and reads `/home/user/nlpcompare/matrix.html`.
+**Ends:** Anna decides: keep / scrap / co-design fresh.
+**Opens:** T23.
+
+### T23 - Matrix tool co-design + next iteration [depends on T22]
+**Why:** Per north star §10 sibling-tool spec: read-only, presentation-optimized, side-by-side of multiple labelled permutations of the same page, no edit/drag/score, emphasis on legibility and forward-ability.
+**Size:** unknown until T22 resolves.
+**Starts:** Anna's co-design conversation - what shape, what columns, what data, what's forward-able for execs.
+**Files:** `matrix.html` (extend or rebuild), `permutations` table (already exists), `exportPermutations()` substrate.
+
+### H - Anna's captured idea list (16 items in memory line 94-112, prioritize when ready)
+
+These came from Anna's running notes in `lab-state-and-followups.md`. Not all are at the same scale or urgency.
+
+- Marking "winning version" for tracking
+- Matrix as side-by-side delta sidebars (intersects T23)
+- Favicon (covered in T5)
+- Keyword lists / highlighting (covered in T12)
+- Slide-in sidebar ToC
+- Entity count per version (and per container)
+- Bootstrap-style container layout to mimic Figma
+- ~~`</>` button to inspect API payload~~ DONE in `675e4d3`
+- Auto-inherit container heading from top text
+- Entity + topic data → topic map / IA
+- Click entity in sidebar → highlight relevant containers
+- Entity colour-coding by type (PLACE vs PERSON)
+- Rename "Rearrangement Lab" (covered in T6)
+- Permutation-aware edit state tracking
+- Version-win plain-language export (for optimization guide)
+- Card duplication
+- Save reusable containers/blocks
+- In-line comments / notes
+- **NEW:** Block deletion (changed from "deferred" - memory line 112)
+
+These need promotion to threads case-by-case; not all need to ship.
+
+### I - Track 2 deliverables (Anna's work, not Bean refactor work)
+
+Per north star §10, retrofit Cruises + Vacation Packages briefs against Phase B findings; fresh per-LP optimization guides for the other 5 LPs. These use Lab outputs but aren't Lab development work. Mentioning here so they don't get conflated with the dev-debt threads.
+
+---
+
+## Dependency map
+
+```
+T0 (verify dual picker) — blocking the editor's mental model trust
+    └─ unblocks confidence in any column / picker work going forward
+
+T1-T6 (quick wins) — independent of everything, parallelizable
+T7-T9 (CSS hygiene) — independent, ideally one session
+
+T10 (V0 overwrite) — schema work, independent
+T11 (container persistence) — schema work, independent
+T12 (target keyword highlighting) — schema + feature, independent
+
+T13 (state centralization) — foundation
+  └─ T14 (labRearrangedNlp fix) — rides with T13
+  └─ T15 (render split) — cleaner after T13
+  └─ T16 (event delegation) — cleaner after T13
+  └─ T17 (drag-drop module) — independent-ish
+
+T18 (testing) — foundational, parallel to T13-T17
+
+T19 (slot × intent) — independent, HIGHEST exec leverage
+T20 (pre-launch in matrix) — depends on T22/T23 progress on matrix
+T21 (block drift) — independent, activates dormant embeddings
+
+T22 (matrix review) → T23 (matrix co-design)
+
+H (idea list) — promote case-by-case
+
+I (Track 2) — Anna-owned, parallel
+```
+
+---
+
+## Critical files
+
+- `/home/user/nlpcompare/lab/index.html` — main dashboard, 5000+ lines, where most threads land
+- `/home/user/nlpcompare/lab/styles.css` — CSS surface for T7-T9
+- `/home/user/nlpcompare/matrix.html` — sibling tool prototype for T22-T23
+- `/home/user/nlpcompare/memory/lab-state-and-followups.md` — source-of-truth doc, update as threads ship
+- `/home/user/nlpcompare/Signal Coherence - North Star.md` — settled decisions, framework context
+- Supabase tables: `permutations`, `lp_blocks`, `crawled_pages`, `recipe_slots`, `nlp_cache`. New tables proposed: `container_renames` (T11), `target_keywords` (T12). New column proposed: `permutations.is_live_baseline` (T10).
+- Supabase edge function: `bridge` (NLP + SQL + cache, JWT-protected)
+- Netlify: `signal-coherence` site ID `cab32293-702d-4f95-9358-d293c666ff96`. Git-connected as of May 15.
+
+## Verification (for any thread that ships)
+
+- Run the Lab locally: open `lab/index.html` in browser, verify load against signal-coherence.netlify.app for visual / behavior parity.
+- For DB-touching threads (T10-T12): verify via Supabase MCP `execute_sql` (read) and `apply_migration` (write).
+- For NLP-touching threads (T19-T21): verify via bridge edge function calls + spot-check `nlp_cache` table.
+- For visual / UI threads: deploy preview via Netlify, screenshot pre/post, gut-check against Anna.
+- For refactor threads (T13-T17): T18 tests required first.
+- Update `memory/lab-state-and-followups.md` as threads ship so the source-of-truth doc doesn't drift.
+
+## Reuse notes (don't reinvent)
+
+- `getVersionList()` for any version-aware UI work
+- `getColumnNlp(slot)` for any column-level data routing
+- `scoreContainersForLab({blocks, versionTag})` for per-version NLP refresh
+- `regenerateBlockHtml(b)` for HTML synthesis from block data
+- `commitOverwriteV05()` as the template for `commitOverwriteV0()` (T10)
+- `loadRecipeSlots()` + `labRecipeSlots` for any slot-picker work
+- Entity-highlight infrastructure for T12 (reuse with new class + data source)
+- `exportPermutations()` for any matrix-of-versions work
+- Bridge edge function tools: `nlp_classify`, `nlp_analyze`, `sql`
