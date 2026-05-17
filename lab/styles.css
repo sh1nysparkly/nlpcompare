@@ -2210,6 +2210,161 @@ footer {
   color: #999;
 }
 
+/* Plain-language export modal -- mirrors the container-code-view modal pattern
+   with an added diff-target radio row and two-column copy buttons. */
+.pl-export-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.pl-export-modal.open { display: flex; }
+.pl-export-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+.pl-export-panel {
+  position: relative;
+  z-index: 1;
+  width: min(960px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: var(--r-lg);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  overflow: hidden;
+}
+.pl-export-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-hover);
+}
+.pl-export-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.pl-export-sub {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-subtle);
+  letter-spacing: 0.03em;
+}
+.pl-export-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.pl-export-copy-all, .pl-export-copy-tables {
+  background: none;
+  border: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  padding: 5px 11px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.pl-export-copy-all:hover, .pl-export-copy-tables:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.pl-export-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-subtle);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.pl-export-close:hover { color: var(--text); }
+.pl-export-target-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 20px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: #fafbfd;
+  border-bottom: 1px solid var(--border-soft);
+}
+.pl-export-target-label { font-weight: 600; font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+.pl-export-target-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: var(--text);
+}
+.pl-export-target-opt input[type="radio"] { margin: 0; cursor: pointer; }
+.pl-export-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+.pl-export-pre {
+  flex: 1;
+  margin: 0;
+  padding: 16px 20px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  background: #fafbfd;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Container pattern dropdown -- replaces the static container_label badge.
+   Styled as a colored pill matching the pattern's badge_color (set inline).
+   Flex: 1 so it occupies the same horizontal space the old span did. */
+.container-pattern-select {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+  /* Keep the select chevron visible against colored backgrounds */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path fill='%23fff' d='M1 3l4 4 4-4z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 10px;
+  padding-right: 24px;
+}
+.container-pattern-select:hover { filter: brightness(1.05); }
+.container-pattern-select:focus {
+  outline: 2px solid rgba(59, 130, 246, 0.4);
+  outline-offset: 1px;
+}
+/* In-dropdown options use OS default text color (dark on white) so they're
+   readable when the user opens the select, even though the closed pill has
+   white text on a colored background. */
+.container-pattern-select option { color: #111; background: #fff; }
+
 /* ToC sidebar -- slide-in heading outline. Fixed position so it overlays
    without reflowing the lab-workspace grid. Closed by default; toggle adds
    .open which slides it in via translateX. */

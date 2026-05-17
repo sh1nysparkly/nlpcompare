@@ -75,6 +75,7 @@
         <div class="score-actions">
           <button class="btn-primary" id="btn-score-wip" onclick="scoreWip()" title="Score the current arrangement of blocks.">Test</button>
           <button class="btn-secondary" id="btn-commit" onclick="showSavePermInput()" title="Save the current arrangement as a new version (or overwrite V0 / V0.5 if one picker is empty).">Commit</button>
+          <button class="btn-secondary" id="btn-pl-export" onclick="openPlainLanguageExport()" title="Generate a plain-language diff against the UX baseline (default V0.5) for the optimization guide.">Export brief</button>
           <!-- Hidden legacy element kept so existing JS that writes to score-status
                doesn't crash; visible status moved to transient toast. -->
           <div class="score-status" id="score-status" style="display:none;"></div>
@@ -680,6 +681,60 @@ let labCollapsedContainers = new Set(); // container_ids the user has collapsed 
 let labContainerNlp = {};   // { container_id: { categories, entities, word_count, ... } } -- per-container NLP results, populated post-load
 let labContainerNlpInProgress = false;
 const LONG_BLOCK_THRESHOLD = 150;  // blocks with body word_count >= this default to collapsed
+
+// Container pattern taxonomy. Hardcoded enum of canonical AMA Travel landing-page
+// container patterns. Replaces the imported container_label badge (which is
+// noisy and inconsistent) with a curated dropdown. The `editable` field is for
+// Bean code-reading context (warning future Beans not to suggest changes to
+// hardwired elements). The `aria_pattern` field drives ARIA notes in the
+// plain-language export -- null = no ARIA line emitted for that pattern.
+const LAB_PATTERNS = [
+  { key: "hero", name: "Hero",
+    structure: "H1 + booking widget",
+    editable: ["h1"], aria_pattern: null, badge_color: "#3b82f6" },
+  { key: "trusted_partners", name: "Trusted Partners",
+    structure: "H2, short <p>, logo carousel",
+    editable: ["h2", "p"], aria_pattern: null, badge_color: "#10b981" },
+  { key: "deal_cards_tabs", name: "Deal Cards (Tabs)",
+    structure: "H3 tabs + single-row card carousel",
+    editable: ["h3"],
+    aria_pattern: "role='tab' with aria-controls + aria-selected on H3 headings; H3s function as tab triggers.",
+    badge_color: "#f59e0b" },
+  { key: "deal_cards_flights", name: "Deal Cards (Flights Grid)",
+    structure: "Two-row small cards + dropdown filters, no h-tags",
+    editable: [], aria_pattern: null, badge_color: "#fbbf24" },
+  { key: "travel_expertise", name: "Travel Expertise",
+    structure: "2/3 + 1/3 split (H2/p/value-props | H3 + h4+p stacks)",
+    editable: ["h2", "p", "value_props_2_3", "h3", "h4_1_3", "p_1_3"],
+    aria_pattern: null, badge_color: "#f97316" },
+  { key: "popular_destinations", name: "Popular Destinations",
+    structure: "H2 + H3 tabs + image carousel (H4 destination names)",
+    editable: ["h2"],
+    aria_pattern: "role='tab' with aria-controls + aria-selected on H3 headings; H3s function as tab triggers.",
+    badge_color: "#a855f7" },
+  { key: "image_carousel", name: "Image Carousel (general)",
+    structure: "Optional H2 + p, tall cards w/ H3 + text, optional end-cap",
+    editable: ["h2", "p", "h3", "card_text", "endcap_p"],
+    aria_pattern: null, badge_color: "#c084fc" },
+  { key: "faqs", name: "FAQs",
+    structure: "H2 + accordion list of questions",
+    editable: ["h2", "question", "answer"],
+    aria_pattern: "Disclosure / accordion pattern: each question is a button with aria-expanded toggling its answer panel.",
+    badge_color: "#06b6d4" },
+  { key: "articles_carousel", name: "Articles Carousel (rare)",
+    structure: "H2 + tall card carousel w/ inset image + h3 article title",
+    editable: ["h2"], aria_pattern: null, badge_color: "#6366f1" },
+  { key: "articles_guides_mixed", name: "Articles/Guides Mixed (rare)",
+    structure: "H2 + 2/3 feature article card + 1/3 stack of 3 article cards",
+    editable: ["h2"], aria_pattern: null, badge_color: "#8b5cf6" },
+  { key: "footer_cards", name: "Footer Cards",
+    structure: "Single-row carousel of <=4 tall image cards w/ H3 product + CTA",
+    editable: ["h3"], aria_pattern: null, badge_color: "#64748b" },
+];
+function getPatternByKey(key) {
+  if (!key) return null;
+  return LAB_PATTERNS.find(p => p.key === key) || null;
+}
 
 // Map Tailwind-style color names (stored in recipe_slots.default_color) to actual hex values.
 // Inline styles use these; if a color isn't in the map, we fall back to a neutral slate.
@@ -1343,7 +1398,7 @@ async function loadBlocksFromCuration(slug) {
   // a plain table read is simpler and cheaper). Order by row_order to preserve page order.
   const url = SUPABASE_URL + "/rest/v1/lp_blocks?slug=eq." + encodeURIComponent(slug)
             + "&order=row_order.asc"
-            + "&select=row_order,block_id,container_label,tag,text,what,component_type,reword,move_cut,notes,curation_version";
+            + "&select=row_order,block_id,container_label,tag,text,what,component_type,reword,move_cut,notes,pattern_key,curation_version";
   const resp = await fetch(url, {
     headers: {
       "apikey": SUPABASE_ANON_KEY,
@@ -1390,6 +1445,17 @@ async function loadBlocksFromCuration(slug) {
         const tagLc = String(r.tag || "").toLowerCase();
         if (tagLc === "[widget]" || tagLc === "widget") externalWidget = true;
       }
+    }
+
+    // Pattern key: denormalized across all rows in the container, so picking the
+    // first non-null wins. Null = no pattern assigned yet (Anna picks from
+    // dropdown in the container header).
+    let containerPatternKey = null;
+    for (const blockRows of byBlock.values()) {
+      for (const r of blockRows) {
+        if (r.pattern_key) { containerPatternKey = r.pattern_key; break; }
+      }
+      if (containerPatternKey) break;
     }
 
     const cid = "c" + cIdx;
@@ -1466,6 +1532,7 @@ async function loadBlocksFromCuration(slug) {
         container_label_source: labelSource,
         container_external_widget: externalWidget,
         external_widget: externalWidget,
+        pattern_key: containerPatternKey,
         curation_version: blockRows[0]?.curation_version || null,
         curation_rows: curation_rows,
       });
@@ -2348,15 +2415,31 @@ function renderContainerHeader(firstBlock, totalBlocks, isFirst, minLevel) {
           ' aria-label="' + (isCollapsed ? 'Expand' : 'Collapse') + '">' +
           '&#9662;</button>';
 
-  // Container label. Static by default; double-click to enter edit mode.
-  // draggable="false" so the parent's drag behavior doesn't hijack the gesture.
-  html += '<span class="container-label" contenteditable="false" spellcheck="true" draggable="false"' +
+  // Container pattern dropdown. Replaces the static container_label badge with
+  // a select of canonical patterns (LAB_PATTERNS). The selected pattern's
+  // badge_color paints the pill; tooltip shows pattern structure and the
+  // imported container_label (for context, since the label is no longer
+  // surfaced as the primary badge).
+  const patternKey = firstBlock.pattern_key || "";
+  const pattern = getPatternByKey(patternKey);
+  const badgeColor = pattern ? pattern.badge_color : "#94a3b8";
+  let patternOptions = '<option value="">-- assign pattern --</option>';
+  for (const p of LAB_PATTERNS) {
+    const sel = p.key === patternKey ? ' selected' : '';
+    patternOptions += '<option value="' + escapeHtml(p.key) + '"' + sel + '>' + escapeHtml(p.name) + '</option>';
+  }
+  const titleParts = [];
+  if (pattern) titleParts.push(pattern.structure);
+  if (label && label !== "(unlabeled)") titleParts.push("imported as: " + label);
+  const titleAttr = titleParts.length ? ' title="' + escapeHtml(titleParts.join(" • ")) + '"' : '';
+  html += '<select class="container-pattern-select"' +
           ' data-container-id="' + escapeHtml(containerId) + '"' +
-          ' ondblclick="enterContainerLabelEdit(event)"' +
-          ' onfocus="onContainerLabelFocus(event)"' +
-          ' onblur="onContainerLabelBlur(event)"' +
-          ' onkeydown="onContainerLabelKeydown(event)"' +
-          ' title="Double-click to rename">' + escapeHtml(label) + '</span>';
+          ' style="background:' + badgeColor + ';"' +
+          ' onchange="onContainerPatternChange(event)"' +
+          ' draggable="false"' +
+          titleAttr + '>' +
+            patternOptions +
+          '</select>';
 
   // Slot assignment area: clickable pill (opens picker for change/remove) when
   // assigned, dashed "+ assign" button when not. Click target is unified -- one
@@ -2481,6 +2564,58 @@ function onContainerLabelBlur(e) {
   containerLabelOriginal = null;
 }
 
+// --- Container pattern assignment (dropdown in container header) ---
+
+async function onContainerPatternChange(e) {
+  const sel = e.target;
+  const containerId = sel.dataset.containerId;
+  const newPatternKey = sel.value || null;
+  if (!containerId || !labSlug) return;
+
+  // Mirror to labBlocks first (responsive UI). Collect curation_block_ids so
+  // we can target the right rows in lp_blocks on persist.
+  const blockIds = new Set();
+  labBlocks.forEach(b => {
+    if (b.container_id === containerId) {
+      b.pattern_key = newPatternKey;
+      if (b.curation_block_id) blockIds.add(b.curation_block_id);
+    }
+  });
+  // Re-render to refresh the badge color on the dropdown.
+  renderBlockList();
+
+  if (!blockIds.size) {
+    showToast("Pattern set (no curated rows to persist)");
+    return;
+  }
+  // PATCH lp_blocks.pattern_key for the rows in this container. Filter by slug
+  // + block_id IN (...) so we don't touch other containers that happen to share
+  // a block_id across pages.
+  const ids = [...blockIds].map(id => '"' + String(id).replace(/"/g, '\\"') + '"').join(",");
+  const url = SUPABASE_URL + "/rest/v1/lp_blocks?slug=eq." + encodeURIComponent(labSlug)
+            + "&block_id=in.(" + encodeURIComponent(ids) + ")";
+  try {
+    const resp = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+      },
+      body: JSON.stringify({ pattern_key: newPatternKey }),
+    });
+    if (!resp.ok) {
+      throw new Error("HTTP " + resp.status + ": " + (await resp.text()).slice(0, 200));
+    }
+    const patternName = getPatternByKey(newPatternKey)?.name || "(cleared)";
+    showToast("Pattern saved: " + patternName);
+  } catch (err) {
+    showToast("Save failed: " + err.message, 5000);
+    console.error("Pattern persist failed:", err);
+  }
+}
+
 // --- Container-level drag (move whole container as a unit) ---
 
 let dragSrcContainerId = null;
@@ -2490,6 +2625,7 @@ function onContainerDragStart(e) {
   // The drag handle (or empty header padding) is the only valid origin.
   if (e.target.closest("[contenteditable]")) { e.preventDefault(); return; }
   if (e.target.closest("button")) { e.preventDefault(); return; }
+  if (e.target.closest("select")) { e.preventDefault(); return; }
 
   dragSrcContainerId = e.currentTarget.dataset.containerDragId || null;
   if (!dragSrcContainerId) { e.preventDefault(); return; }
@@ -2712,6 +2848,332 @@ async function copyContainerCodeView() {
   try {
     await navigator.clipboard.writeText(text);
     const btn = modal.querySelector(".container-code-view-copy");
+    const orig = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  } catch (e) {
+    console.error("clipboard write failed", e);
+  }
+}
+
+// =============================================================================
+// PLAIN-LANGUAGE EXPORT (item 7)
+// Diffs the active version against a chosen baseline (default V0.5 / fallback
+// V0) and emits a markdown outline + TSV tables for paste into UX optimization
+// guides. Block matching is by stable block_id so reorders + edits stay
+// distinguishable. Container ARIA notes come from LAB_PATTERNS.
+// =============================================================================
+
+function getBaselineCandidates() {
+  const candidates = [];
+  const uxBaseline = (labPermutations || []).find(p => p.is_ux_baseline);
+  if (uxBaseline) {
+    candidates.push({
+      key: "v05",
+      label: "V0.5 (UX baseline)",
+      blocks: uxBaseline.blocks || [],
+      nlp: uxBaseline.nlp_result || null,
+    });
+  }
+  candidates.push({
+    key: "v0",
+    label: "V0 (live baseline)",
+    blocks: labOriginalBlocks || [],
+    nlp: labOriginalNlp || null,
+  });
+  return candidates;
+}
+
+function getActiveSnapshot() {
+  return {
+    blocks: labBlocks || [],
+    nlp: labRearrangedNlp || labOriginalNlp || null,
+  };
+}
+
+function blockStableId(b) {
+  // Prefer the curation block_id (stable across reorders/saves); fall back to
+  // synthetic id for non-curated paths.
+  return b.block_id || b.curation_block_id || b.id || null;
+}
+
+function diffBlockSets(activeBlocks, baselineBlocks) {
+  const baselineMap = new Map();
+  baselineBlocks.forEach((b, i) => {
+    const id = blockStableId(b);
+    if (id) baselineMap.set(id, { block: b, index: i });
+  });
+  const activeIds = new Set();
+  const result = new Map();  // id -> { kind, ...metadata }
+
+  activeBlocks.forEach((b, i) => {
+    const id = blockStableId(b);
+    if (!id) return;
+    activeIds.add(id);
+    if (!baselineMap.has(id)) {
+      result.set(id, { kind: "NEW", activeIndex: i });
+      return;
+    }
+    const base = baselineMap.get(id);
+    const textChanged = (String(b.title || "") !== String(base.block.title || ""))
+                     || (String(b.body_text || "") !== String(base.block.body_text || ""));
+    const levelChanged = (b.level || 0) !== (base.block.level || 0);
+    const positionChanged = i !== base.index;
+    if (textChanged || levelChanged) {
+      result.set(id, {
+        kind: "CHANGED",
+        activeIndex: i,
+        oldTitle: base.block.title || "",
+        oldLevel: base.block.level || 0,
+        oldBodyText: base.block.body_text || "",
+        textChanged, levelChanged,
+        alsoMoved: positionChanged,
+      });
+    } else if (positionChanged) {
+      result.set(id, { kind: "MOVED", activeIndex: i, oldIndex: base.index });
+    }
+  });
+  baselineBlocks.forEach((b, i) => {
+    const id = blockStableId(b);
+    if (!id || activeIds.has(id)) return;
+    result.set(id, {
+      kind: "REMOVED",
+      oldIndex: i,
+      oldTitle: b.title || "",
+      oldLevel: b.level || 0,
+      oldContainerLabel: b.container_label || "",
+    });
+  });
+  return result;
+}
+
+function findMoveAnchor(diffMap, activeBlocks, fromIndex) {
+  function isStable(idx) {
+    const b = activeBlocks[idx];
+    if (!b) return false;
+    const id = blockStableId(b);
+    if (!id) return false;
+    return !diffMap.has(id);
+  }
+  for (let i = fromIndex + 1; i < activeBlocks.length; i++) {
+    if (isStable(i)) return { direction: "above", title: activeBlocks[i].title || "(untitled)" };
+  }
+  for (let i = fromIndex - 1; i >= 0; i--) {
+    if (isStable(i)) return { direction: "below", title: activeBlocks[i].title || "(untitled)" };
+  }
+  return null;
+}
+
+function renderOutlineMarkdown(activeBlocks, diffMap) {
+  const lines = [];
+  let lastContainerId = null;
+  activeBlocks.forEach((b, i) => {
+    const id = blockStableId(b);
+    if (b.container_id !== lastContainerId) {
+      const pattern = getPatternByKey(b.pattern_key);
+      const containerName = pattern ? pattern.name : (b.container_label || "(unlabeled container)");
+      lines.push("");
+      lines.push("### Container: " + containerName);
+      if (pattern && pattern.aria_pattern) {
+        lines.push("  ARIA: " + pattern.aria_pattern);
+      }
+      lastContainerId = b.container_id;
+    }
+    const change = id ? diffMap.get(id) : null;
+    const levelStr = b.level >= 1 ? "H" + b.level : "p";
+    const title = b.title || "(no title)";
+    if (!change) {
+      lines.push("  Block: " + levelStr + " \"" + title + "\"");
+      return;
+    }
+    if (change.kind === "NEW") {
+      lines.push("  Block: " + levelStr + " \"" + title + "\" (NEW)");
+      if (b.body_text) lines.push("    " + b.body_text);
+    } else if (change.kind === "CHANGED") {
+      const markers = [];
+      if (change.levelChanged) markers.push("~~H" + change.oldLevel + "~~ → " + levelStr);
+      if (change.textChanged && change.oldTitle !== title) markers.push("~~" + change.oldTitle + "~~ → " + title);
+      if (change.alsoMoved) {
+        const anchor = findMoveAnchor(diffMap, activeBlocks, i);
+        if (anchor) markers.push("moved " + anchor.direction + " '" + anchor.title + "'");
+        else markers.push("moved");
+      }
+      const markerStr = markers.length ? " (" + markers.join("; ") + ")" : "";
+      lines.push("  Block: " + levelStr + " \"" + title + "\" (CHANGED)" + markerStr);
+      if (change.textChanged && b.body_text && b.body_text !== change.oldBodyText) {
+        lines.push("    " + b.body_text);
+      }
+    } else if (change.kind === "MOVED") {
+      const anchor = findMoveAnchor(diffMap, activeBlocks, i);
+      const anchorStr = anchor ? "MOVED " + anchor.direction + " '" + anchor.title + "'" : "MOVED";
+      lines.push("  Block: " + levelStr + " \"" + title + "\" (" + anchorStr + ")");
+    }
+  });
+
+  // Append REMOVED blocks at the end (best-effort grouping; container context
+  // may be stale, so we list them flat under a single header).
+  const removed = [...diffMap.values()].filter(c => c.kind === "REMOVED");
+  if (removed.length) {
+    lines.push("");
+    lines.push("### Removed (from baseline)");
+    removed.forEach(rb => {
+      const levelStr = rb.oldLevel >= 1 ? "H" + rb.oldLevel : "p";
+      const ctx = rb.oldContainerLabel ? " [was in: " + rb.oldContainerLabel + "]" : "";
+      lines.push("  Block: " + levelStr + " \"" + rb.oldTitle + "\" (REMOVED)" + ctx);
+    });
+  }
+  return lines.join("\n").trimStart();
+}
+
+function buildShiftTsv(baselineNlp, activeNlp, kind) {
+  const baseItems = (baselineNlp && baselineNlp[kind]) ? baselineNlp[kind] : [];
+  const activeItems = (activeNlp && activeNlp[kind]) ? activeNlp[kind] : [];
+
+  const valOf = (e) => kind === "entities" ? (e.salience || 0) : (e.confidence || 0);
+  const baseMap = {};
+  for (const e of baseItems) {
+    if (!e || !e.name) continue;
+    const v = valOf(e);
+    if (!(e.name in baseMap) || v > baseMap[e.name]) baseMap[e.name] = v;
+  }
+  const activeMap = {};
+  for (const e of activeItems) {
+    if (!e || !e.name) continue;
+    const v = valOf(e);
+    if (!(e.name in activeMap) || v > activeMap[e.name]) activeMap[e.name] = v;
+  }
+  const names = [...new Set([...Object.keys(baseMap), ...Object.keys(activeMap)])];
+  const rows = names.map(n => ({
+    name: n,
+    base: baseMap[n] || 0,
+    active: activeMap[n] || 0,
+    delta: (activeMap[n] || 0) - (baseMap[n] || 0),
+  }));
+  rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  const isEnt = kind === "entities";
+  const header = isEnt
+    ? "entity\tbaseline_salience\tactive_salience\tdelta"
+    : "category\tbaseline_%\tactive_%\tdelta_pp";
+  const fmt = (v) => isEnt ? v.toFixed(3) : (v * 100).toFixed(1);
+  const fmtDelta = (v) => {
+    const s = isEnt ? v.toFixed(3) : (v * 100).toFixed(1);
+    return v > 0 ? "+" + s : s;
+  };
+  const lines = [header];
+  for (const r of rows) {
+    lines.push([r.name, fmt(r.base), fmt(r.active), fmtDelta(r.delta)].join("\t"));
+  }
+  return lines.join("\n");
+}
+
+function buildPlainLanguageExport(targetKey) {
+  const candidates = getBaselineCandidates();
+  let target = candidates.find(c => c.key === targetKey);
+  let fallbackUsed = false;
+  if (!target) {
+    target = candidates[0];
+    fallbackUsed = true;
+  }
+  const active = getActiveSnapshot();
+  const diffMap = diffBlockSets(active.blocks, target.blocks);
+  const outline = renderOutlineMarkdown(active.blocks, diffMap);
+  const entityTsv = buildShiftTsv(target.nlp, active.nlp, "entities");
+  const categoryTsv = buildShiftTsv(target.nlp, active.nlp, "categories");
+  return { targetLabel: target.label, targetKey: target.key, fallbackUsed, outline, entityTsv, categoryTsv };
+}
+
+function openPlainLanguageExport() {
+  if (!labBlocks.length) { showToast("Load a page first."); return; }
+  const candidates = getBaselineCandidates();
+  if (!candidates.length) { showToast("No baseline available for diff."); return; }
+  const defaultKey = candidates.find(c => c.key === "v05") ? "v05" : "v0";
+  showPlainLanguageModal(defaultKey);
+}
+
+function showPlainLanguageModal(targetKey) {
+  let modal = document.getElementById("pl-export-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "pl-export-modal";
+    modal.className = "pl-export-modal";
+    modal.innerHTML = `
+      <div class="pl-export-backdrop" onclick="closePlainLanguageModal()"></div>
+      <div class="pl-export-panel" role="dialog" aria-modal="true">
+        <div class="pl-export-header">
+          <div>
+            <div class="pl-export-title">Plain-language export</div>
+            <div class="pl-export-sub">Active version vs baseline -- paste into the optimization guide.</div>
+          </div>
+          <div class="pl-export-actions">
+            <button class="pl-export-copy-all" onclick="copyPlainLanguageExport('all')">Copy all</button>
+            <button class="pl-export-copy-tables" onclick="copyPlainLanguageExport('tables')">Copy tables only</button>
+            <button class="pl-export-close" onclick="closePlainLanguageModal()" aria-label="Close">&times;</button>
+          </div>
+        </div>
+        <div class="pl-export-target-row" id="pl-export-target-row"></div>
+        <div class="pl-export-body">
+          <pre class="pl-export-pre" id="pl-export-pre"></pre>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.classList.contains("open")) closePlainLanguageModal();
+    });
+  }
+  const candidates = getBaselineCandidates();
+  let radioHtml = '<span class="pl-export-target-label">Diff against:</span>';
+  for (const c of candidates) {
+    const checked = c.key === targetKey ? " checked" : "";
+    radioHtml += '<label class="pl-export-target-opt">' +
+      '<input type="radio" name="pl-target" value="' + escapeHtml(c.key) + '"' + checked +
+      ' onchange="onPlainLanguageTargetChange(event)"> ' + escapeHtml(c.label) +
+      '</label>';
+  }
+  modal.querySelector("#pl-export-target-row").innerHTML = radioHtml;
+  renderPlainLanguageBody(targetKey);
+  modal.classList.add("open");
+}
+
+function renderPlainLanguageBody(targetKey) {
+  const result = buildPlainLanguageExport(targetKey);
+  const fallbackNote = result.fallbackUsed && result.targetKey === "v0"
+    ? "[Note: No V0.5 (UX baseline) exists for this page -- diffing against V0 (live).]\n\n"
+    : "";
+  const composed = fallbackNote +
+    "[Disclaimer: All headings included for wayfinding. Markers: ~~old~~ -> new = text/level change; NEW/REMOVED/MOVED tags as labeled.]\n\n" +
+    "## Outline (" + result.targetLabel + " -> active)\n\n" +
+    result.outline +
+    "\n\n---\n\n" +
+    "## Entity Shifts (" + result.targetLabel + " -> active)\n\n" +
+    result.entityTsv +
+    "\n\n## Category Shifts (" + result.targetLabel + " -> active)\n\n" +
+    result.categoryTsv;
+  const pre = document.getElementById("pl-export-pre");
+  if (pre) pre.textContent = composed;
+  const modal = document.getElementById("pl-export-modal");
+  if (modal) {
+    modal.dataset.plFull = composed;
+    modal.dataset.plTables = "## Entity Shifts (" + result.targetLabel + " -> active)\n\n" + result.entityTsv +
+      "\n\n## Category Shifts (" + result.targetLabel + " -> active)\n\n" + result.categoryTsv;
+  }
+}
+
+function onPlainLanguageTargetChange(e) { renderPlainLanguageBody(e.target.value); }
+
+function closePlainLanguageModal() {
+  const modal = document.getElementById("pl-export-modal");
+  if (modal) modal.classList.remove("open");
+}
+
+async function copyPlainLanguageExport(which) {
+  const modal = document.getElementById("pl-export-modal");
+  if (!modal) return;
+  const text = which === "tables" ? modal.dataset.plTables : modal.dataset.plFull;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = modal.querySelector(which === "tables" ? ".pl-export-copy-tables" : ".pl-export-copy-all");
     const orig = btn.textContent;
     btn.textContent = "Copied";
     setTimeout(() => { btn.textContent = orig; }, 1200);
