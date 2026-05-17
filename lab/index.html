@@ -48,7 +48,6 @@
             <button class="reset-btn" onclick="resetBlockOrder()" title="Restore block order, sections, and edits to the current baseline">Reset to baseline</button>
             <button class="outline-btn" onclick="collapseAllContainers()" title="Collapse all containers (page outline view)">Collapse all</button>
             <button class="outline-btn" onclick="expandAllContainers()" title="Expand all containers">Expand all</button>
-            <button class="outline-btn" id="btn-toggle-toc" onclick="toggleTocSidebar()" title="Toggle heading outline sidebar">ToC</button>
             <!-- "Showing V*X*" chip slots in here, rendered by renderCanvasShowingChip(). -->
             <span id="canvas-showing-chip-slot"></span>
           </div>
@@ -98,9 +97,15 @@
   <!-- Heading-outline slide-in sidebar. Validates tag structure / flow of the
        current arrangement. Fixed-position so it overlays without reflowing
        the grid; toggle via the ToC button in panel-head-actions. -->
+  <!-- Binder-divider tab on the left edge -- always visible, click to open
+       the sidebar inline. Vertical text matches the binder/file-folder
+       affordance Anna sketched. -->
+  <button id="toc-binder-tab" class="toc-binder-tab" onclick="toggleTocSidebar()" aria-label="Toggle heading outline" title="Heading outline">
+    <span class="toc-binder-tab-text">Table of Contents</span>
+  </button>
   <aside id="toc-sidebar" class="toc-sidebar" aria-hidden="true">
     <div class="toc-sidebar-head">
-      <h4>Heading outline</h4>
+      <h4>Table of Contents</h4>
       <button class="toc-close-btn" onclick="toggleTocSidebar()" aria-label="Close sidebar" title="Close">&times;</button>
     </div>
     <div class="toc-sidebar-body" id="toc-sidebar-body"></div>
@@ -700,7 +705,7 @@ const LAB_PATTERNS = [
     editable: ["h3"],
     aria_pattern: "role='tab' with aria-controls + aria-selected on H3 headings; H3s function as tab triggers.",
     badge_color: "#f59e0b" },
-  { key: "deal_cards_flights", name: "Deal Cards (Flights Grid)",
+  { key: "deal_cards_flights", name: "Deal Cards (Flights)",
     structure: "Two-row small cards + dropdown filters, no h-tags",
     editable: [], aria_pattern: null, badge_color: "#fbbf24" },
   { key: "travel_expertise", name: "Travel Expertise",
@@ -712,7 +717,7 @@ const LAB_PATTERNS = [
     editable: ["h2"],
     aria_pattern: "role='tab' with aria-controls + aria-selected on H3 headings; H3s function as tab triggers.",
     badge_color: "#a855f7" },
-  { key: "image_carousel", name: "Image Carousel (general)",
+  { key: "image_carousel", name: "Image Carousel",
     structure: "Optional H2 + p, tall cards w/ H3 + text, optional end-cap",
     editable: ["h2", "p", "h3", "card_text", "endcap_p"],
     aria_pattern: null, badge_color: "#c084fc" },
@@ -721,10 +726,10 @@ const LAB_PATTERNS = [
     editable: ["h2", "question", "answer"],
     aria_pattern: "Disclosure / accordion pattern: each question is a button with aria-expanded toggling its answer panel.",
     badge_color: "#06b6d4" },
-  { key: "articles_carousel", name: "Articles Carousel (rare)",
+  { key: "articles_carousel", name: "Articles Carousel",
     structure: "H2 + tall card carousel w/ inset image + h3 article title",
     editable: ["h2"], aria_pattern: null, badge_color: "#6366f1" },
-  { key: "articles_guides_mixed", name: "Articles/Guides Mixed (rare)",
+  { key: "articles_guides_mixed", name: "Articles/Guides Mixed",
     structure: "H2 + 2/3 feature article card + 1/3 stack of 3 article cards",
     editable: ["h2"], aria_pattern: null, badge_color: "#8b5cf6" },
   { key: "footer_cards", name: "Footer Cards",
@@ -2294,6 +2299,8 @@ function toggleTocSidebar() {
   if (!sidebar) return;
   const isOpen = sidebar.classList.toggle("open");
   sidebar.setAttribute("aria-hidden", isOpen ? "false" : "true");
+  // Body class drives the binder-tab translateX so it tracks the sidebar.
+  document.body.classList.toggle("toc-open", isOpen);
   if (isOpen) renderTocSidebar();
 }
 
@@ -2432,52 +2439,41 @@ function renderContainerHeader(firstBlock, totalBlocks, isFirst, minLevel) {
           ' aria-label="' + (isCollapsed ? 'Expand' : 'Collapse') + '">' +
           '&#9662;</button>';
 
-  // Container pattern dropdown. Replaces the static container_label badge with
-  // a select of canonical patterns (LAB_PATTERNS). The selected pattern's
-  // badge_color paints the pill; tooltip shows pattern structure and the
-  // imported container_label (for context, since the label is no longer
-  // surfaced as the primary badge).
+  // Container label. Static by default; double-click to enter edit mode.
+  // draggable="false" so the parent's drag behavior doesn't hijack the gesture.
+  // Auto-inherits the first heading text when source is fallback-heading or
+  // auto-inherited (see ux_recipe_section logic).
+  html += '<span class="container-label" contenteditable="false" spellcheck="true" draggable="false"' +
+          ' data-container-id="' + escapeHtml(containerId) + '"' +
+          ' ondblclick="enterContainerLabelEdit(event)"' +
+          ' onfocus="onContainerLabelFocus(event)"' +
+          ' onblur="onContainerLabelBlur(event)"' +
+          ' onkeydown="onContainerLabelKeydown(event)"' +
+          ' title="Double-click to rename">' + escapeHtml(label) + '</span>';
+
+  // Container pattern dropdown. Replaces the prior "+ assign slot" UI -- slot
+  // assignment is decommissioned in favour of canonical pattern keys. Styled
+  // to match the slot-pill aesthetic: dashed outlined button when empty,
+  // colored pill when assigned.
   const patternKey = firstBlock.pattern_key || "";
   const pattern = getPatternByKey(patternKey);
-  const badgeColor = pattern ? pattern.badge_color : "#94a3b8";
-  let patternOptions = '<option value="">-- assign pattern --</option>';
+  let patternOptions = '<option value="">+ assign pattern</option>';
   for (const p of LAB_PATTERNS) {
     const sel = p.key === patternKey ? ' selected' : '';
     patternOptions += '<option value="' + escapeHtml(p.key) + '"' + sel + '>' + escapeHtml(p.name) + '</option>';
   }
-  const titleParts = [];
-  if (pattern) titleParts.push(pattern.structure);
-  if (label && label !== "(unlabeled)") titleParts.push("imported as: " + label);
-  const titleAttr = titleParts.length ? ' title="' + escapeHtml(titleParts.join(" • ")) + '"' : '';
-  html += '<select class="container-pattern-select"' +
+  const patternTooltip = pattern ? pattern.structure : "Assign a container pattern";
+  const patternClass = pattern ? "container-pattern-select is-assigned" : "container-pattern-select is-empty";
+  const patternStyle = pattern ? (' style="background:' + pattern.badge_color + ';"') : '';
+  html += '<select class="' + patternClass + '"' +
           ' data-container-id="' + escapeHtml(containerId) + '"' +
-          ' style="background:' + badgeColor + ';"' +
+          patternStyle +
           ' onchange="onContainerPatternChange(event)"' +
           ' draggable="false"' +
-          titleAttr + '>' +
+          ' title="' + escapeHtml(patternTooltip) + '">' +
             patternOptions +
           '</select>';
 
-  // Slot assignment area: clickable pill (opens picker for change/remove) when
-  // assigned, dashed "+ assign" button when not. Click target is unified -- one
-  // affordance per container, the picker handles change vs. remove vs. cancel.
-  if (slotInfo && slotInfo.is_ghost) {
-    html += '<button class="container-slot-pill is-ghost"' +
-              ' onclick="openSlotPickerForContainer(\'' + escapeHtml(containerId) + '\')"' +
-              ' title="Excluded from scoring. Click to change or restore.">' +
-              '<span class="ghost-icon">&#x1F47B;</span>Ghost' +
-            '</button>';
-  } else if (slotInfo) {
-    html += '<button class="container-slot-pill" style="background:' + slotHex + ';"' +
-              ' onclick="openSlotPickerForContainer(\'' + escapeHtml(containerId) + '\')"' +
-              ' title="Click to change or remove slot">' +
-              escapeHtml(slotInfo.slot_label) +
-              (slotInfo.custom ? ' <span class="container-slot-custom-tag">custom</span>' : '') +
-            '</button>';
-  } else {
-    html += '<button class="container-slot-assign-btn" onclick="openSlotPickerForContainer(\'' +
-              escapeHtml(containerId) + '\')">+ assign slot</button>';
-  }
 
   // External-widget pill DISABLED — the curated What='Widget' tagging in v12 is
   // ~50:50 reliable as of May 11 2026, so the pill teaches mistrust more than it
@@ -4465,7 +4461,26 @@ function renderNlpDeltas() {
 
   const baseEnts = (baseNlp && baseNlp.entities) || [];
   const newEnts = hasRight ? (newNlp.entities || []) : null;
-  html += renderEntitiesScorecard(baseEnts, newEnts);
+  html += renderEntitiesScorecard(baseEnts, newEnts, baseLabel, rightLabel);
+
+  // Unique-entity counts footer. Lives below both scorecards so the count
+  // numbers don't visually collide with salience scores inside the column
+  // headers. Reads the same rolled-up maps the entities scorecard uses.
+  const baseEntCount = new Set(baseEnts.map(e => e.name)).size;
+  const newEntCount = hasRight ? new Set(newEnts.map(e => e.name)).size : null;
+  html += '<div class="scorecard-stats-footer">' +
+            '<span class="scorecard-stats-label">Unique entities</span>' +
+            '<span class="scorecard-stats-pair">' +
+              '<span class="scorecard-stats-version">' + escapeHtml(baseLabel) + '</span>' +
+              '<span class="scorecard-stats-num">' + baseEntCount + '</span>' +
+            '</span>' +
+            (newEntCount !== null
+              ? '<span class="scorecard-stats-pair">' +
+                  '<span class="scorecard-stats-version">' + escapeHtml(rightLabel) + '</span>' +
+                  '<span class="scorecard-stats-num">' + newEntCount + '</span>' +
+                '</span>'
+              : '') +
+          '</div>';
 
   html += '</div>';
   area.innerHTML = html;
@@ -4531,8 +4546,10 @@ function renderCategoriesScorecard(origCats, newCats) {
   return html;
 }
 
-function renderEntitiesScorecard(origEnts, newEnts) {
+function renderEntitiesScorecard(origEnts, newEnts, leftLabel, rightLabel) {
   const TOP_N = 15;
+  leftLabel = leftLabel || "Base";
+  rightLabel = rightLabel || "Now";
   let html = '<div class="scorecard-section"><h5>Entities <span class="scorecard-sublabel">(top ' + TOP_N + ' by salience)</span></h5>';
 
   if (!origEnts.length && (!newEnts || !newEnts.length)) {
@@ -4546,9 +4563,8 @@ function renderEntitiesScorecard(origEnts, newEnts) {
   }
 
   if (newEnts === null) {
-    const baseCount = Object.keys(origMap).length;
     const names = Object.keys(origMap).sort((a, b) => origMap[b] - origMap[a]).slice(0, TOP_N);
-    html += '<table class="ent-table"><thead><tr><th>Entity</th><th class="num">Base (' + baseCount + ')</th></tr></thead><tbody>';
+    html += '<table class="ent-table"><thead><tr><th></th><th class="num">' + escapeHtml(leftLabel) + '</th></tr></thead><tbody>';
     for (const name of names) {
       html += '<tr><td class="ent-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</td>' +
         '<td class="ent-base num">' + origMap[name].toFixed(2) + '</td></tr>';
@@ -4559,21 +4575,19 @@ function renderEntitiesScorecard(origEnts, newEnts) {
     for (const e of newEnts) {
       if (!newMap[e.name] || e.salience > newMap[e.name]) newMap[e.name] = e.salience;
     }
-    const baseCount = Object.keys(origMap).length;
-    const newCount = Object.keys(newMap).length;
     const allNames = [...new Set([...Object.keys(origMap), ...Object.keys(newMap)])];
     allNames.sort((a, b) => Math.max(newMap[b] || 0, origMap[b] || 0) - Math.max(newMap[a] || 0, origMap[a] || 0));
     const top = allNames.slice(0, TOP_N);
 
-    // Match the categories pattern: name | base | → | new | ±delta-pill.
-    // Same visual structure across both scorecards so the eye scans them the same way.
-    // Column headers carry unique-entity counts so copy-change effects on
-    // vocabulary breadth are visible at a glance.
+    // Same visual structure as the categories scorecard so the eye scans them
+    // the same way. Column headers carry the version short labels (V0, V0.5,
+    // V1...) so it's always clear what's being compared. Unique-entity counts
+    // moved to the scorecard footer to avoid visual collision with salience.
     html += '<table class="ent-table"><thead><tr>' +
-      '<th>Entity</th>' +
-      '<th class="num">Base (' + baseCount + ')</th>' +
       '<th></th>' +
-      '<th class="num">Now (' + newCount + ')</th>' +
+      '<th class="num">' + escapeHtml(leftLabel) + '</th>' +
+      '<th></th>' +
+      '<th class="num">' + escapeHtml(rightLabel) + '</th>' +
       '<th class="num">Δ</th>' +
       '</tr></thead><tbody>';
     for (const name of top) {
