@@ -2379,6 +2379,8 @@ footer {
   background-repeat: no-repeat;
   background-position: right 7px center;
   background-size: 8px;
+  text-align: center;
+  text-align-last: center;
   transition: all 0.15s;
   /* Shrink-fit to the SELECTED option's text instead of sizing to the widest
      option (default <select> behavior). Supported in modern Chrome/Safari/
@@ -2439,25 +2441,27 @@ footer {
   top: 145px;
   left: 0;
   z-index: 51;
-  background: var(--surface-hover, #f3f4f6);
+  /* Default state = the friendly primary-tinted look (was hover before);
+     hover swaps to the warm yellow + purple combo for a pop. */
+  background: var(--primary-soft, #eef2ff);
   border: 1px solid var(--border, #e5e7eb);
   border-left: none;
   border-radius: 0 8px 8px 0;
   padding: 16px 6px;
   cursor: pointer;
-  color: var(--text-muted, #6b7280);
+  color: var(--primary, #2563eb);
   font-family: var(--font-display);
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  box-shadow: 2px 0 6px rgba(15, 23, 42, 0.06);
+  box-shadow: 3px 0 10px rgba(15, 23, 42, 0.10);
   transition: transform 250ms ease, background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 .toc-binder-tab:hover {
-  background: var(--primary-soft, #eef2ff);
-  color: var(--primary, #2563eb);
-  box-shadow: 3px 0 10px rgba(15, 23, 42, 0.10);
+  background: #fbbf24;
+  color: #6d28d9;
+  box-shadow: 3px 0 12px rgba(251, 191, 36, 0.35);
 }
 .toc-binder-tab-text {
   writing-mode: vertical-rl;
