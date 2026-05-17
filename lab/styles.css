@@ -2429,9 +2429,10 @@ footer {
    panel's right side. */
 .toc-binder-tab {
   position: fixed;
-  top: 50%;
+  /* Aligned with the bottom of the panel-sticky divider so the tab's top
+     edge sits on the line between the header actions and the content list. */
+  top: 145px;
   left: 0;
-  transform: translateY(-50%);
   z-index: 51;
   background: var(--surface-hover, #f3f4f6);
   border: 1px solid var(--border, #e5e7eb);
@@ -2459,7 +2460,7 @@ footer {
   display: inline-block;
 }
 /* When sidebar is open, slide the tab to sit flush against its right edge. */
-body.toc-open .toc-binder-tab { transform: translateY(-50%) translateX(280px); }
+body.toc-open .toc-binder-tab { transform: translateX(280px); }
 
 /* ToC sidebar -- slide-in heading outline. Fixed position so it overlays
    without reflowing the lab-workspace grid. Closed by default; toggle adds

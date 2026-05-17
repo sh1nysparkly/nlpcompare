@@ -735,6 +735,12 @@ const LAB_PATTERNS = [
   { key: "footer_cards", name: "Footer Cards",
     structure: "Single-row carousel of <=4 tall image cards w/ H3 product + CTA",
     editable: ["h3"], aria_pattern: null, badge_color: "#64748b" },
+  // Ghost = exclude from NLP scoring. Picked from the same dropdown so it
+  // reuses the affordance; the export and category-routing code treats it as
+  // a non-renderable marker pattern.
+  { key: "ghost", name: "Ghost (exclude from scoring)",
+    structure: "Excluded from NLP scoring + export. Use for chrome, off-template content, etc.",
+    editable: [], aria_pattern: null, badge_color: "#9ca3af" },
 ];
 function getPatternByKey(key) {
   if (!key) return null;
@@ -2311,14 +2317,11 @@ function renderTocSidebar() {
     body.innerHTML = '<div class="toc-empty">No content loaded.</div>';
     return;
   }
+  // Headings only -- container names suppressed in the ToC view per Anna's
+  // request. The container badge in the main canvas already carries that
+  // info; the ToC is purely the heading-outline lens.
   let html = '';
-  let lastContainerId = null;
   for (const block of labBlocks) {
-    if (block.container_id !== lastContainerId) {
-      const label = block.container_label || "(unlabeled)";
-      html += '<div class="toc-container-label">' + escapeHtml(label) + '</div>';
-      lastContainerId = block.container_id;
-    }
     if (block.level >= 1 && block.level <= 4 && block.title) {
       html += '<div class="toc-heading toc-h' + block.level + '" title="' + escapeHtml(block.title) + '">' +
                 '<span class="toc-level">h' + block.level + '</span>' +
@@ -2409,13 +2412,22 @@ function renderContainerHeader(firstBlock, totalBlocks, isFirst, minLevel) {
   const classes = ["container-header"];
   if (isFirst) classes.push("first");
   if (slotInfo) classes.push("has-slot");
-  if (slotInfo && slotInfo.is_ghost) classes.push("is-ghost");
   if (isExternal) classes.push("is-external");
   // Implicit-TOC sizing: the label scales by the highest H-tag in the container.
   if (minLevel >= 1 && minLevel <= 4) classes.push("container-l" + minLevel);
 
-  const slotHex = slotInfo ? sectionColorHex(slotInfo.color) : "";
-  const inlineStyle = slotInfo ? ' style="border-left: 4px solid ' + slotHex + ';"' : "";
+  // Pattern lookup (done early so left-border color + ghost class can use it).
+  // Ghosting now flows through the pattern dropdown ("ghost" pattern key);
+  // legacy slotInfo.is_ghost still honored for any pre-pattern-era data.
+  const patternKey = firstBlock.pattern_key || "";
+  const pattern = getPatternByKey(patternKey);
+  const isGhostPattern = patternKey === "ghost";
+  if (isGhostPattern || (slotInfo && slotInfo.is_ghost)) classes.push("is-ghost");
+
+  // Container left-edge color: now tied to the assigned pattern instead of the
+  // (decommissioned) slot. Default neutral when no pattern picked.
+  const edgeHex = pattern ? pattern.badge_color : "";
+  const inlineStyle = edgeHex ? ' style="border-left: 4px solid ' + edgeHex + ';"' : "";
 
   let html = '<div class="' + classes.join(" ") + '"' + inlineStyle +
              ' data-container-drag-id="' + escapeHtml(containerId) + '"' +
@@ -2454,10 +2466,9 @@ function renderContainerHeader(firstBlock, totalBlocks, isFirst, minLevel) {
   // Container pattern dropdown. Replaces the prior "+ assign slot" UI -- slot
   // assignment is decommissioned in favour of canonical pattern keys. Styled
   // to match the slot-pill aesthetic: dashed outlined button when empty,
-  // colored pill when assigned.
-  const patternKey = firstBlock.pattern_key || "";
-  const pattern = getPatternByKey(patternKey);
-  let patternOptions = '<option value="">+ assign pattern</option>';
+  // colored pill when assigned. patternKey/pattern computed above (used for
+  // edge color + ghost classification too).
+  let patternOptions = '<option value="">Assign pattern</option>';
   for (const p of LAB_PATTERNS) {
     const sel = p.key === patternKey ? ' selected' : '';
     patternOptions += '<option value="' + escapeHtml(p.key) + '"' + sel + '>' + escapeHtml(p.name) + '</option>';
@@ -2586,11 +2597,15 @@ async function onContainerPatternChange(e) {
   if (!containerId || !labSlug) return;
 
   // Mirror to labBlocks first (responsive UI). Collect curation_block_ids so
-  // we can target the right rows in lp_blocks on persist.
+  // we can target the right rows in lp_blocks on persist. The "ghost" pattern
+  // also flips block.is_ghost so the existing scoring-exclusion path
+  // (scoreContainersForLab + scoreWip) picks it up without parallel wiring.
+  const isGhost = newPatternKey === "ghost";
   const blockIds = new Set();
   labBlocks.forEach(b => {
     if (b.container_id === containerId) {
       b.pattern_key = newPatternKey;
+      b.is_ghost = isGhost;
       if (b.curation_block_id) blockIds.add(b.curation_block_id);
     }
   });
@@ -4550,7 +4565,10 @@ function renderEntitiesScorecard(origEnts, newEnts, leftLabel, rightLabel) {
   const TOP_N = 15;
   leftLabel = leftLabel || "Base";
   rightLabel = rightLabel || "Now";
-  let html = '<div class="scorecard-section"><h5>Entities <span class="scorecard-sublabel">(top ' + TOP_N + ' by salience)</span></h5>';
+  // Section title lives INSIDE the table header (first <th>) so it's anchored
+  // to the version columns instead of floating loose above the table.
+  const sectionTitle = "ENTITIES (top " + TOP_N + ")";
+  let html = '<div class="scorecard-section">';
 
   if (!origEnts.length && (!newEnts || !newEnts.length)) {
     return html + '<div class="scorecard-empty">No entities returned.</div></div>';
@@ -4564,7 +4582,7 @@ function renderEntitiesScorecard(origEnts, newEnts, leftLabel, rightLabel) {
 
   if (newEnts === null) {
     const names = Object.keys(origMap).sort((a, b) => origMap[b] - origMap[a]).slice(0, TOP_N);
-    html += '<table class="ent-table"><thead><tr><th></th><th class="num">' + escapeHtml(leftLabel) + '</th></tr></thead><tbody>';
+    html += '<table class="ent-table"><thead><tr><th class="ent-section-title">' + escapeHtml(sectionTitle) + '</th><th class="num">' + escapeHtml(leftLabel) + '</th></tr></thead><tbody>';
     for (const name of names) {
       html += '<tr><td class="ent-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</td>' +
         '<td class="ent-base num">' + origMap[name].toFixed(2) + '</td></tr>';
@@ -4584,7 +4602,7 @@ function renderEntitiesScorecard(origEnts, newEnts, leftLabel, rightLabel) {
     // V1...) so it's always clear what's being compared. Unique-entity counts
     // moved to the scorecard footer to avoid visual collision with salience.
     html += '<table class="ent-table"><thead><tr>' +
-      '<th></th>' +
+      '<th class="ent-section-title">' + escapeHtml(sectionTitle) + '</th>' +
       '<th class="num">' + escapeHtml(leftLabel) + '</th>' +
       '<th></th>' +
       '<th class="num">' + escapeHtml(rightLabel) + '</th>' +
