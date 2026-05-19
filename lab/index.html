@@ -1791,12 +1791,22 @@ async function scoreContainersForLab(opts) {
       groups[b.container_id].push(b);
     });
 
+    // Ghosted blocks (block-level is_ghost, or living inside a ghost section)
+    // must NOT contribute to per-container category/entity attribution -- same
+    // rule as page-level blocksToHtml() and the </> diagnostic modal. Without
+    // this filter, ghosting blocks leaves their content still feeding the
+    // container pill, so the pill keeps reading the old category after the
+    // user nukes its source content. The two surfaces were silently
+    // disagreeing before this fix.
+    const ghostSectionIds = new Set(labSections.filter(s => s.is_ghost).map(s => s.id));
+
     // Score each container in parallel. Use original_html when present (full
     // fidelity); fall back to regenerateBlockHtml for trimmed-perm blocks that
     // only carry title + body_text.
     const tasks = order.map(async (cid) => {
       const blocks = groups[cid];
-      const html = blocks
+      const sentBlocks = blocks.filter(b => !b.is_ghost && !ghostSectionIds.has(b.section_id));
+      const html = sentBlocks
         .map(b => b.original_html || regenerateBlockHtml(b))
         .filter(Boolean)
         .join("");
@@ -4288,6 +4298,17 @@ async function scoreWip() {
     // meaningfully -- "Vacation Packages" might become salient where "Last Minute
     // Deals" used to be, and the highlighting should follow).
     renderBlockList();
+    // Refresh per-container NLP so the container pills reflect the WIP state
+    // (edits, ghosts, reorders) -- previously the pills were frozen at version-
+    // load time, so editing/ghosting blocks updated page-level scoring but left
+    // container pills showing the pre-edit attribution. Fires-and-forgets like
+    // the other call sites; renderBlockList runs again inside when scoring
+    // resolves so the pills swap in. Cache is content-addressed so unchanged
+    // containers return instantly.
+    scoreContainersForLab({
+      blocks: labBlocks,
+      versionTag: "wip-" + (cur ? cur.shortLabel : "scored"),
+    });
   } catch (e) {
     document.getElementById("score-status").textContent = "NLP error: " + e.message;
     console.error("Lab score error:", e);
