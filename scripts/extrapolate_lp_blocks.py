@@ -109,7 +109,7 @@ class Row:
     what: Optional[str] = None
     component_type: Optional[str] = None
     pattern_key: Optional[str] = None
-    curation_version: str = "v1-extrapolated"
+    curation_version: str = "v20-extrapolated"
 
     def for_insert(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None}
