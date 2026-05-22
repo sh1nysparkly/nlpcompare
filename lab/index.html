@@ -2962,63 +2962,157 @@ function blockStableId(b) {
   return b.block_id || b.curation_block_id || b.id || null;
 }
 
+// Multi-pass block matcher. Used to be a single-pass ID lookup that fell apart
+// when the May 19 backfill (b6687ac) assigned independent random UUIDs across
+// permutation rows -- so logically-identical blocks got different IDs in
+// different versions and the diff read everything as NEW. Now matches in three
+// passes:
+//   1. Stable-ID lookup (preserves the cases where IDs do line up)
+//   2. Structural alignment: walk both sides positionally within each
+//      (container_id, level) bucket. Catches title rewrites in place, which is
+//      the dominant edit pattern in optimization briefs.
+//   3. Text similarity for remaining unmatched blocks (Jaccard on word tokens).
+//      Catches moves and heavier rewrites where the structural slot drifted.
+// Result map keys: "a:<idx>" for active-side entries (NEW/CHANGED/MOVED),
+// "b:<idx>" for baseline-only entries (REMOVED). Downstream code (renderer,
+// findMoveAnchor) queries by activeIndex via the "a:" prefix.
 function diffBlockSets(activeBlocks, baselineBlocks) {
-  const baselineMap = new Map();
-  baselineBlocks.forEach((b, i) => {
-    const id = blockStableId(b);
-    if (id) baselineMap.set(id, { block: b, index: i });
-  });
-  const activeIds = new Set();
-  const result = new Map();  // id -> { kind, ...metadata }
+  const nA = activeBlocks.length;
+  const nB = baselineBlocks.length;
+  const matchActive = new Array(nA).fill(-1);    // index into baselineBlocks
+  const matchBaseline = new Array(nB).fill(-1);  // index into activeBlocks
 
-  activeBlocks.forEach((b, i) => {
-    const id = blockStableId(b);
-    if (!id) return;
-    activeIds.add(id);
-    if (!baselineMap.has(id)) {
-      result.set(id, { kind: "NEW", activeIndex: i });
-      return;
+  // Pass 1: stable-ID match.
+  const baselineByStableId = new Map();
+  for (let i = 0; i < nB; i++) {
+    const id = blockStableId(baselineBlocks[i]);
+    if (id && !baselineByStableId.has(id)) baselineByStableId.set(id, i);
+  }
+  for (let j = 0; j < nA; j++) {
+    const id = blockStableId(activeBlocks[j]);
+    if (!id) continue;
+    const bi = baselineByStableId.get(id);
+    if (bi === undefined) continue;
+    if (matchBaseline[bi] !== -1) continue;
+    matchActive[j] = bi;
+    matchBaseline[bi] = j;
+  }
+
+  // Pass 2: positional alignment within (container_id, level) buckets.
+  const bucketKey = (b) => (b.container_id || "") + "|" + (b.level || 0);
+  const baselineBuckets = new Map();  // key -> ordered baseline indices
+  for (let i = 0; i < nB; i++) {
+    const key = bucketKey(baselineBlocks[i]);
+    if (!baselineBuckets.has(key)) baselineBuckets.set(key, []);
+    baselineBuckets.get(key).push(i);
+  }
+  const activeBuckets = new Map();
+  for (let j = 0; j < nA; j++) {
+    const key = bucketKey(activeBlocks[j]);
+    if (!activeBuckets.has(key)) activeBuckets.set(key, []);
+    activeBuckets.get(key).push(j);
+  }
+  for (const [key, activeIdxs] of activeBuckets.entries()) {
+    const baselineIdxs = baselineBuckets.get(key) || [];
+    let bp = 0;
+    for (const j of activeIdxs) {
+      if (matchActive[j] !== -1) continue;
+      while (bp < baselineIdxs.length && matchBaseline[baselineIdxs[bp]] !== -1) bp++;
+      if (bp >= baselineIdxs.length) break;
+      const bi = baselineIdxs[bp];
+      matchActive[j] = bi;
+      matchBaseline[bi] = j;
+      bp++;
     }
-    const base = baselineMap.get(id);
-    const textChanged = (String(b.title || "") !== String(base.block.title || ""))
-                     || (String(b.body_text || "") !== String(base.block.body_text || ""));
-    const levelChanged = (b.level || 0) !== (base.block.level || 0);
-    const positionChanged = i !== base.index;
+  }
+
+  // Pass 3: text similarity for remaining unmatched. Tunable threshold; 0.35
+  // is conservative enough to avoid spurious cross-container matches while
+  // still catching heavily-edited blocks that share most vocabulary with their
+  // baseline counterpart.
+  const SIM_THRESHOLD = 0.35;
+  const stillActive = [];
+  for (let j = 0; j < nA; j++) if (matchActive[j] === -1) stillActive.push(j);
+  for (const j of stillActive) {
+    let bestI = -1;
+    let bestScore = SIM_THRESHOLD;
+    for (let i = 0; i < nB; i++) {
+      if (matchBaseline[i] !== -1) continue;
+      const score = blockTextSimilarity(activeBlocks[j], baselineBlocks[i]);
+      if (score > bestScore) { bestScore = score; bestI = i; }
+    }
+    if (bestI !== -1) {
+      matchActive[j] = bestI;
+      matchBaseline[bestI] = j;
+    }
+  }
+
+  // Compose result map.
+  const result = new Map();
+  for (let j = 0; j < nA; j++) {
+    const k = "a:" + j;
+    const b = activeBlocks[j];
+    if (matchActive[j] === -1) {
+      result.set(k, { kind: "NEW", activeIndex: j });
+      continue;
+    }
+    const bi = matchActive[j];
+    const base = baselineBlocks[bi];
+    const textChanged = (String(b.title || "") !== String(base.title || ""))
+                     || (String(b.body_text || "") !== String(base.body_text || ""));
+    const levelChanged = (b.level || 0) !== (base.level || 0);
+    const positionChanged = j !== bi;
     if (textChanged || levelChanged) {
-      result.set(id, {
+      result.set(k, {
         kind: "CHANGED",
-        activeIndex: i,
-        oldTitle: base.block.title || "",
-        oldLevel: base.block.level || 0,
-        oldBodyText: base.block.body_text || "",
+        activeIndex: j,
+        oldTitle: base.title || "",
+        oldLevel: base.level || 0,
+        oldBodyText: base.body_text || "",
         textChanged, levelChanged,
         alsoMoved: positionChanged,
       });
     } else if (positionChanged) {
-      result.set(id, { kind: "MOVED", activeIndex: i, oldIndex: base.index });
+      result.set(k, { kind: "MOVED", activeIndex: j, oldIndex: bi });
     }
-  });
-  baselineBlocks.forEach((b, i) => {
-    const id = blockStableId(b);
-    if (!id || activeIds.has(id)) return;
-    result.set(id, {
+    // else: unchanged -- no entry, renderer treats absence as unchanged.
+  }
+  for (let i = 0; i < nB; i++) {
+    if (matchBaseline[i] !== -1) continue;
+    result.set("b:" + i, {
       kind: "REMOVED",
       oldIndex: i,
-      oldTitle: b.title || "",
-      oldLevel: b.level || 0,
-      oldContainerLabel: b.container_label || "",
+      oldTitle: baselineBlocks[i].title || "",
+      oldLevel: baselineBlocks[i].level || 0,
+      oldContainerLabel: baselineBlocks[i].container_label || "",
     });
-  });
+  }
   return result;
+}
+
+// Jaccard similarity on lowercased word tokens of (title + body_text). Short
+// tokens (<=1 char) dropped to dampen the impact of incidental punctuation
+// fragments after the regex split.
+function blockTextSimilarity(a, b) {
+  const tokenize = (s) => {
+    const set = new Set();
+    String(s || "").toLowerCase().split(/[^a-z0-9]+/).forEach(t => {
+      if (t.length > 1) set.add(t);
+    });
+    return set;
+  };
+  const tA = tokenize((a.title || "") + " " + (a.body_text || ""));
+  const tB = tokenize((b.title || "") + " " + (b.body_text || ""));
+  if (tA.size === 0 && tB.size === 0) return 0;
+  let inter = 0;
+  for (const t of tA) if (tB.has(t)) inter++;
+  const union = tA.size + tB.size - inter;
+  return union > 0 ? inter / union : 0;
 }
 
 function findMoveAnchor(diffMap, activeBlocks, fromIndex) {
   function isStable(idx) {
-    const b = activeBlocks[idx];
-    if (!b) return false;
-    const id = blockStableId(b);
-    if (!id) return false;
-    return !diffMap.has(id);
+    return activeBlocks[idx] && !diffMap.has("a:" + idx);
   }
   for (let i = fromIndex + 1; i < activeBlocks.length; i++) {
     if (isStable(i)) return { direction: "above", title: activeBlocks[i].title || "(untitled)" };
@@ -3033,7 +3127,12 @@ function renderOutlineMarkdown(activeBlocks, diffMap) {
   const lines = [];
   let lastContainerId = null;
   activeBlocks.forEach((b, i) => {
-    const id = blockStableId(b);
+    // Ghosted blocks are "logically removed" -- excluded from NLP scoring and
+    // from the rendered outline. They WERE filtered upstream in
+    // buildPlainLanguageExport, so the diff treats their baseline counterparts
+    // as REMOVED. Defensive double-check here in case a caller bypasses the
+    // upstream filter.
+    if (b.is_ghost) return;
     if (b.container_id !== lastContainerId) {
       const pattern = getPatternByKey(b.pattern_key);
       const containerName = pattern ? pattern.name : (b.container_label || "(unlabeled container)");
@@ -3044,7 +3143,7 @@ function renderOutlineMarkdown(activeBlocks, diffMap) {
       }
       lastContainerId = b.container_id;
     }
-    const change = id ? diffMap.get(id) : null;
+    const change = diffMap.get("a:" + i);
     const levelStr = b.level >= 1 ? "H" + b.level : "p";
     const title = b.title || "(no title)";
     if (!change) {
@@ -3141,8 +3240,16 @@ function buildPlainLanguageExport(targetKey) {
     fallbackUsed = true;
   }
   const active = getActiveSnapshot();
-  const diffMap = diffBlockSets(active.blocks, target.blocks);
-  const outline = renderOutlineMarkdown(active.blocks, diffMap);
+  // Ghosted blocks are "logically removed" -- filter from both sides before
+  // diffing so the comparison reads "what V0 had" vs "what proposal renders."
+  // Anna's optimization briefs treat ghosted-in-active as REMOVED-in-proposal;
+  // dropping them from active and keeping them in baseline produces that
+  // exact pattern via the diff's standard REMOVED bucket.
+  const isLive = (b) => !b.is_ghost;
+  const activeBlocks = (active.blocks || []).filter(isLive);
+  const targetBlocks = (target.blocks || []).filter(isLive);
+  const diffMap = diffBlockSets(activeBlocks, targetBlocks);
+  const outline = renderOutlineMarkdown(activeBlocks, diffMap);
   const entityTsv = buildShiftTsv(target.nlp, active.nlp, "entities");
   const categoryTsv = buildShiftTsv(target.nlp, active.nlp, "categories");
   return { targetLabel: target.label, targetKey: target.key, fallbackUsed, outline, entityTsv, categoryTsv };
