@@ -41,6 +41,11 @@ CONTAINER_TAGS = {"page-section", "page"}
 
 # Widget tags inside containers, with the child-card tag where known.
 # Mirrors CARD_COMPONENTS in lab/index.html line 875.
+#
+# Some pages have had their HTML tag-suffix-stripped during Anna's manual
+# render+cleanup (e.g. <insurance-product-carousel> -> <insurance>,
+# <articles-carousel> -> <articles>). Those aliases live alongside the full
+# tag names so detection works on either form.
 CARD_WIDGETS = {
     "navigation-carousel": "navigation-card-view",
     "insurance-product-carousel": "insurance-product-card",
@@ -51,7 +56,17 @@ CARD_WIDGETS = {
     "content-feed-widget": "content-feed-card",
     "brands-carousel": None,
     "tri-card-content": None,
+    # Cleanup-stripped aliases. For <insurance>, the same tag is both the
+    # carousel wrapper and the card -- disambiguated at detection time by
+    # checking for a <carousel> descendant (wrapper) vs not (card).
+    "insurance": "insurance",
+    "articles": None,
 }
+# Tags that can be value-prop-widget aliases (full + cleanup-stripped)
+VALUE_PROP_WIDGET_TAGS = ("value-prop-widget", "value")
+# Tags that can be FAQ-widget aliases
+FAQ_WIDGET_TAGS = ("faqs-widget", "faqs")
+# Legacy single-tag names preserved for any external callers/tests
 VALUE_PROP_WIDGET = "value-prop-widget"
 FAQ_WIDGET = "faqs-widget"
 EXTERNAL_WIDGET_TAGS = {
@@ -231,9 +246,9 @@ def container_label_for(container: Tag, fallback_idx: int) -> str:
         if h and element_text(h):
             return element_text(h)
     # Widget-named fallbacks
-    if container.find(VALUE_PROP_WIDGET):
+    if find_any(container, VALUE_PROP_WIDGET_TAGS):
         return "Value props"
-    if container.find("articles-carousel"):
+    if container.find("articles-carousel") or container.find("articles"):
         return "Related articles"
     if container.find("content-feed-widget"):
         return "Related content"
@@ -249,17 +264,59 @@ def is_external_widget(container: Tag) -> bool:
     return False
 
 
+def find_any(container: Tag, tag_names) -> Optional[Tag]:
+    """Find the first descendant matching any of the given tag names."""
+    for t in tag_names:
+        found = container.find(t)
+        if found:
+            return found
+    return None
+
+
 def detect_card_widget(container: Tag) -> Optional[tuple[str, Optional[str]]]:
-    """Returns (widget_tag, card_tag) if container has a card widget, else None."""
+    """Returns (widget_tag, card_tag) if container has a card widget, else None.
+
+    Special-case: <insurance> can be both the carousel WRAPPER and each card.
+    The wrapper has a <carousel> descendant; cards don't. We only treat the
+    first <insurance> as a widget if it has a <carousel> descendant.
+    """
     for widget_tag, card_tag in CARD_WIDGETS.items():
-        if container.find(widget_tag):
-            return widget_tag, card_tag
+        found = container.find(widget_tag)
+        if not found:
+            continue
+        # Disambiguate <insurance>: only treat as widget when it contains
+        # a <carousel> descendant (otherwise it's a single-card scenario).
+        if widget_tag == "insurance" and not found.find("carousel"):
+            continue
+        return widget_tag, card_tag
     return None
 
 
 def detect_cards(widget_el: Tag, card_tag: Optional[str]) -> list[Tag]:
-    """Find card-shaped repeating children inside widget_el."""
+    """Find card-shaped repeating children inside widget_el.
+
+    For the explicit card_tag case, prefer the shallowest set of cards so we
+    don't cascade through nested wrappers (the <insurance> wrapper-tag ==
+    card-tag case in Anna's cleaned HTML).
+    """
     if card_tag:
+        ambiguous = (card_tag == widget_el.name)
+        # 1. Direct children of widget_el matching card_tag
+        direct = [c for c in widget_el.children if isinstance(c, Tag) and c.name == card_tag]
+        if len(direct) >= 2:
+            return direct
+        # 2. One level deeper (inside a wrapping element like <carousel>)
+        for child in widget_el.children:
+            if isinstance(child, Tag):
+                nested = [c for c in child.children if isinstance(c, Tag) and c.name == card_tag]
+                if len(nested) >= 2:
+                    return nested
+        # 3. Ambiguous case (wrapper-tag == card-tag, e.g. <insurance>): give up
+        #    here rather than risk picking up cascaded nested wrappers that
+        #    over-emit content. Caller's fallback emits one block instead.
+        if ambiguous:
+            return []
+        # 4. Legacy fallback for unambiguous cases: any descendant.
         return widget_el.find_all(card_tag)
     # Auto-detect: any descendant with 3+ children sharing a tag name
     for el in widget_el.find_all(True):
@@ -357,19 +414,20 @@ def emit_rows_dedup(el: Tag) -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 
 def split_value_props(container: Tag) -> list[list[tuple[str, str]]]:
-    """value-prop-widget: each (icon-span, label, p) triplet is its own block.
+    """value-prop-widget (or cleanup-stripped <value>): each (icon-span,
+    label, p) triplet is its own block.
 
     Anna's cleaned HTML for VPs is flat: <span>icon</span>label<p>copy</p>
     repeated. We split by detecting span->text->p triplets.
     """
-    vp = container.find(VALUE_PROP_WIDGET)
+    vp = find_any(container, VALUE_PROP_WIDGET_TAGS)
     if not vp:
         return []
     blocks: list[list[tuple[str, str]]] = []
     # First emit any container-level intro (heading + intro p before the VP)
     intro_rows = []
     for sib in container.children:
-        if isinstance(sib, Tag) and sib.name.lower() == VALUE_PROP_WIDGET:
+        if isinstance(sib, Tag) and sib.name.lower() in VALUE_PROP_WIDGET_TAGS:
             break
         if isinstance(sib, Tag):
             intro_rows.extend(emit_rows_dedup(sib))
@@ -469,16 +527,24 @@ def split_card_widget(container: Tag, widget_tag: str, card_tag: Optional[str]) 
 
     # Cards
     cards = detect_cards(widget, card_tag)
-    for card in cards:
-        rows = emit_rows_dedup(card)
-        if rows:
-            blocks.append(rows)
+    if cards:
+        for card in cards:
+            rows = emit_rows_dedup(card)
+            if rows:
+                blocks.append(rows)
+    else:
+        # No detectable card shape (e.g. ambiguous <insurance> wrapper-tag
+        # case with cascaded nested wrappers). Emit the widget content as
+        # a single block so we don't lose it.
+        widget_rows = emit_rows_dedup(widget)
+        if widget_rows:
+            blocks.append(widget_rows)
     return blocks
 
 
 def split_faq(container: Tag) -> list[list[tuple[str, str]]]:
-    """faqs-widget in cleaned HTML: alternating <button>Q</button><p>A</p> pairs."""
-    widget = container.find(FAQ_WIDGET)
+    """faqs-widget (or cleanup-stripped <faqs>): alternating <button>Q</button><p>A</p> pairs."""
+    widget = find_any(container, FAQ_WIDGET_TAGS)
     if not widget:
         return []
     blocks: list[list[tuple[str, str]]] = []
@@ -500,22 +566,44 @@ def split_faq(container: Tag) -> list[list[tuple[str, str]]]:
                 seen.add(x)
         blocks.append(deduped)
 
-    # Pair up button + p
-    children = [c for c in widget.children if isinstance(c, Tag)]
+    # Pair up button + answer. The answer can be either a <p> sibling OR
+    # one or more bare-text nodes between this <button> and the next.
+    # Anna's cleaned HTML drops <p> wrappers on most FAQ answers, leaving
+    # the text as direct children of the widget.
+    children = list(widget.children)  # both Tags and NavigableStrings
     i = 0
     while i < len(children):
-        if children[i].name.lower() == "button":
-            q = element_text(children[i])
-            a = ""
-            if i + 1 < len(children) and children[i + 1].name.lower() == "p":
-                a = element_text(children[i + 1])
-                i += 2
-            else:
-                i += 1
+        node = children[i]
+        if isinstance(node, Tag) and node.name.lower() == "button":
+            q = element_text(node)
+            answer_parts: list[str] = []
+            answer_tags: list[tuple[str, str]] = []
+            j = i + 1
+            while j < len(children):
+                nxt = children[j]
+                if isinstance(nxt, Tag) and nxt.name.lower() == "button":
+                    break
+                if isinstance(nxt, Tag):
+                    nm = nxt.name.lower()
+                    if nm in ("p", "ul", "ol"):
+                        t = element_text(nxt)
+                        if t:
+                            answer_tags.append(("p" if nm == "p" else "ul", t))
+                    elif nm == "a":
+                        t = element_text(nxt)
+                        if t:
+                            answer_tags.append(("a", t))
+                else:
+                    s = clean_text(str(nxt))
+                    if s:
+                        answer_parts.append(s)
+                j += 1
+            i = j
             if q:
                 rows = [("button", q)]
-                if a:
-                    rows.append(("p", a))
+                if answer_parts:
+                    rows.append(("p", " ".join(answer_parts)))
+                rows.extend(answer_tags)
                 blocks.append(rows)
         else:
             i += 1
@@ -582,11 +670,11 @@ def container_blocks(container: Tag) -> tuple[list[list[tuple[str, str]]], str]:
     Caller is responsible for trimming nested CONTAINER_TAGS children (see
     trim_nested_containers) so this function can use find_all freely.
     """
-    # 1. FAQ widget
-    if container.find(FAQ_WIDGET):
+    # 1. FAQ widget (or cleanup-stripped <faqs>)
+    if find_any(container, FAQ_WIDGET_TAGS):
         return split_faq(container), "faqs"
-    # 2. Value-prop widget
-    if container.find(VALUE_PROP_WIDGET):
+    # 2. Value-prop widget (or cleanup-stripped <value>)
+    if find_any(container, VALUE_PROP_WIDGET_TAGS):
         return split_value_props(container), "value_props"
     # 3. Card widget
     card_match = detect_card_widget(container)
@@ -603,6 +691,9 @@ def container_blocks(container: Tag) -> tuple[list[list[tuple[str, str]]], str]:
             "content-feed-widget": "articles",
             "brands-carousel": "trusted_partners",
             "tri-card-content": "value_props",
+            # Cleanup-stripped aliases
+            "insurance": "deal_cards",
+            "articles": "articles",
         }
         return (
             split_card_widget(container, widget_tag, card_tag),
