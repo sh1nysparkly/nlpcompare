@@ -79,7 +79,7 @@ The block-trimming helper used by all three commit paths (save-new, V0.5 overwri
 
 The `b.edited` gate that used to wrap `original_html` is gone. Permutation rows are now self-contained: re-loading + re-scoring works without needing the underlying curation/crawl data.
 
-**Historical gotcha:** existing V0/V0.5 rows in the DB committed BEFORE May 17 lack `original_html` and `block_id`. The plain-language export diff against them will mark everything as NEW/REMOVED. Re-saving upgrades them. The V0 load-swap hydrates missing `original_html` via `regenerateBlockHtml()` at load time so re-scoring still works on legacy data.
+**Historical gotcha (May 17-22):** existing V0/V0.5 rows committed BEFORE May 17 lacked `original_html` and `block_id`. May 19 backfill (`b6687ac`) injected `block_id` UUIDs but used INDEPENDENT random values per row, so logically-identical blocks got different IDs across rows -- the ID-based diff couldn't match them, export read everything as NEW. **Resolved May 22** at the matcher layer: `diffBlockSets` is now multi-pass (ID lookup → structural alignment by `(container_id, level)` bucket → text-similarity fallback) and no longer depends on cross-row ID overlap. The backfilled random UUIDs are harmless under the new matcher. Legacy `original_html` is still hydrated via `regenerateBlockHtml()` at load time for re-scoring.
 
 ---
 
@@ -92,16 +92,25 @@ Modal shows:
 - Markdown preview (outline + ARIA notes + TSV tables)
 - Copy all / Copy tables only buttons
 
-Diff engine (`diffBlockSets`) matches blocks by stable `block_id` (with `curation_block_id` / synthetic `id` fallbacks). Detects:
+Diff engine (`diffBlockSets`, rewritten May 22): three-pass matcher tolerant of ID-namespace drift across permutation rows.
 
-- **NEW** -- in active, not in baseline
-- **REMOVED** -- in baseline, not in active (rendered as a `### Removed (from baseline)` trailer)
-- **CHANGED** -- title/level diff (with `~~old~~ → new` strikethrough markers)
-- **MOVED** -- position diff only; emits anchor like `MOVED above 'Best Price Guarantee'`
+1. **Stable-ID lookup** via `blockStableId` (`block_id || curation_block_id || id`). Catches the cases where saved IDs do line up across versions (e.g. unchanged rows derived from the same load-time IDs).
+2. **Positional alignment within `(container_id, level)` buckets.** For each unmatched active block at bucket position N, match to baseline block at the same bucket position N. Catches title rewrites in place -- the dominant edit pattern in optimization briefs even when both title and body were replaced.
+3. **Text similarity (Jaccard on word tokens of title + body_text)** for remaining unmatched. Catches moves across containers and heavier rewrites that share most vocabulary. Threshold 0.35.
+
+Output categories:
+- **NEW** -- active block with no match (truly added content, including blocks from `+ Block` / `+ Container` that have no IDs).
+- **REMOVED** -- baseline block with no match (rendered as a `### Removed (from baseline)` trailer).
+- **CHANGED** -- matched but title/level/body differ (with `~~old~~ → new` strikethrough markers).
+- **MOVED** -- matched, identical content, position changed (emits anchor like `MOVED above 'Best Price Guarantee'`).
+
+Ghosted blocks (`b.is_ghost === true`, set by the `"ghost"` pattern dropdown or block-level ghost toggle) are filtered upstream in `buildPlainLanguageExport` before reaching the matcher. Their baseline counterparts fall into REMOVED via the standard diff path -- Anna's "ghost == REMOVED in proposal" workflow.
 
 Container headers in the outline emit pattern name + ARIA line when `pattern.aria_pattern` is defined.
 
 TSV tables: entity salience deltas + category confidence deltas, sorted by `|delta|` descending. Designed for paste-into-Sheets.
+
+**Acknowledged ceiling:** the matcher INFERS what changed by comparing snapshots. Heavy-edit-AND-move-AND-level-change of the same block will read as NEW + REMOVED instead of CHANGED + MOVED. Anna catches these on QA. The durable fix is the structured change log -- see `memory/lab-state-and-followups.md` § "Structured change log architecture."
 
 ---
 

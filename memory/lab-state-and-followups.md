@@ -92,6 +92,8 @@ Netlify-only (NEVER committed; lost when git auto-deploy from `main` overwrote p
 
 - `675e4d3` -- Per-block `</>` toggle for HTML-authored block bodies + container-level `</>` diagnostic popover. `html_authored` flag + `body_html` field; `regenerateBlockHtml` short-circuits to authored HTML verbatim so NLP receives real structure. Persisted via both save paths.
 - `3d30ce1` -- Rebuild of the lost `ff336dc` fix: `getColumnNlp(slot)` routes scorecard columns to picker slots (LEFT=a base, RIGHT=b comparison). Active-slot WIP override via `labRearrangedNlpVersionLabel` match on shortLabel.
+- `85ab840` -- Follow-on to `3d30ce1`: same scorecard-columns-to-slots fix, applied via a different session that didn't see the in-flight rebuild branch. `getColumnNlp(slot)` confirmed wired; header labels reflect actual selected versions instead of always-V0.
+- `6e45b40` -- Drop the `"+"` suffix from `labRearrangedNlpVersionLabel` in `scoreWip()`. The suffix was meant to differentiate edited-from-loaded but `labIsRearranged` is V0-relative (TRUE for any non-V0 even when nothing's been edited), so saving V15 then scoring produced label `"V15+"` which `getColumnNlp` couldn't match. WIP score went orphaned, column fell through to null `nlp_result`. Score button "worked" silently with nothing in the scorecard. Suffix removed; WIP override already gated by `slot===activePickerSlot` so the differentiation was redundant.
 
 ## Recent commits (May 17, 2026, branch `claude/explore-and-plan-phase-1-G9PZq` → merged to main)
 
@@ -106,6 +108,8 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 - `a4e6d1d` -- Shrink pattern pill: `field-sizing: content` so the pill fits the SELECTED option instead of widest (was forcing every pill to ~280px wide). Tighter padding, smaller letter-spacing, font shaved 0.5pt. "Ghost (exclude from scoring)" shortened to "Ghost". Block-count display removed from container header. Anna's correctly-cropped favicon set copied into lab/.
 - `8f0963a` -- Binder tab color swap (idle = old hover blue tint; hover = warm yellow + purple text echoing the Flights pill). Pattern pill text centered via `text-align-last: center` (the property that actually targets `<select>` closed-state rendering; standard `text-align` doesn't catch it).
 - `83c8c90` -- Bug fix: pages with committed V0 baselines (`/flights`, `/destinations`, `/things-to-do`) loaded with blank scorecards because legacy V0 rows lacked `original_html` -- `scoreOriginal()` was sending empty HTML to NLP and nulling `labOriginalNlp`. Fix: `slimBlockForSnapshot` now always saves `original_html`; load-time swap hydrates missing `original_html` via `regenerateBlockHtml()`; auto-`scoreOriginal()` skipped when V0 row has authoritative saved NLP. See "V0 load swap" section above.
+- `2f593a8` -- Add `Other/Misc` pattern entry to `LAB_PATTERNS` (between `footer_cards` and `ghost`) and update the Ghost display label to `Ghost 👻` (was just `Ghost`). Pattern key `"other"` persists into `lp_blocks.pattern_key` when selected.
+- `e2a6b8d` -- Tweak the `Other/Misc` pattern's `badge_color` (visual polish; no behavioral change).
 
 **Schema migrations applied via Supabase MCP** (project `signal-coherence` / `ghzfrxxevjjfgpxvmahy`):
 - `add_pattern_key_to_lp_blocks` (May 17) -- `lp_blocks.pattern_key text` (nullable)
@@ -122,7 +126,17 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 
 **Schema migrations applied via Supabase MCP** (May 19):
 - `permutations_rls_permissive_solo_user` -- RLS enable + `anon_all_access FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)`. See `memory/rls-permutations-intentional.md`.
-- `backfill_permutations_block_ids` -- DML UPDATE injecting UUIDs into `block_id` for any block with all three ID fields null.
+- `backfill_permutations_block_ids` -- DML UPDATE injecting UUIDs into `block_id` for any block with all three ID fields null. **Caveat (uncovered May 22):** the backfill minted INDEPENDENT random UUIDs per row, which means V0 row's "block 0" and V0.5 row's "block 0" -- logically the same block -- got DIFFERENT UUIDs. Plus `labBlocks` from `loadBlocksFromCuration` uses `curation_block_id` (the `"c0-b0"`-style positional code), not `block_id`. Net effect: ID-based diffing went from "no IDs to match against" to "IDs that all mismatch" -- export read everything as NEW. Fixed at the matcher layer May 22 (`diffBlockSets` now does multi-pass structural matching that doesn't depend on ID overlap). The backfilled UUIDs are now harmless; no data rollback needed.
+
+## Recent commits (May 22, 2026, branch `claude/funny-franklin-9CRjS` -- in flight, not yet merged to main)
+
+- `<pending>` -- Band-aid fix for plain-language export bug surfaced on `/things-to-do`. Two changes:
+  1. **`diffBlockSets` rewritten as multi-pass matcher.** Used to be a single-pass ID lookup that fell apart when the May 19 backfill assigned independent random UUIDs across permutation rows -- logically-identical blocks got different IDs, diff read everything as NEW. Now matches in three passes: stable-ID lookup (preserves cases where IDs do line up); positional alignment within `(container_id, level)` buckets (catches title rewrites in place, the dominant edit pattern in optimization briefs); text similarity via Jaccard on word tokens (catches moves and heavier rewrites). Result-map key scheme changed from `<stableId>` to `"a:<idx>"` / `"b:<idx>"` so blocks without IDs participate in the diff (previously silently dropped). `renderOutlineMarkdown` and `findMoveAnchor` updated to query by the new keys.
+  2. **Ghost filter in `buildPlainLanguageExport`.** Strips `is_ghost: true` blocks from both active and target before diffing. Matches the intent documented in `LAB_PATTERNS["ghost"]` ("Excluded from NLP scoring + export") that the implementation never actually delivered. Anna's workflow uses ghosting as the "REMOVED in proposal" signal -- by filtering active ghosts before the diff, their baseline counterparts naturally fall into the REMOVED bucket. Defensive double-check in `renderOutlineMarkdown` too.
+
+  Net result on Anna's `/things-to-do` "UX Edit May 21 EOD" perm vs V0: 14 CHANGED, 22 NEW, 1 MOVED, 50 REMOVED -- exact match to her hand-written brief format. Was: 96 NEW.
+
+  **Acknowledged caveat:** band-aid only. The real fix is the structured-change-log architecture that records edits as they happen and persists them onto saved permutations alongside `parent_perm_id`. Pass-3 text-similarity matcher will mis-match the corner case of "rewrote title + body AND moved AND changed level" -- Anna will catch these on QA. See "Open followups → Structured change log" below.
 
 ## Open followups
 
@@ -136,6 +150,31 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 - **Stale `labRearrangedNlp` on version switch**: still open. `loadVersionIntoLab` doesn't clear `labRearrangedNlp`, so if user scores V7 then switches active to V8 without re-scoring, V8's column shows V7's old score. The freshness check in `getColumnNlp` compensates by routing to perm's `nlp_result` when `labRearrangedNlpVersionLabel` doesn't match `ver.shortLabel`. Band-aid in place; cleaner fix is to clear both `labRearrangedNlp` and `labRearrangedNlpVersionLabel` in `loadVersionIntoLab`. (Listed as T14 in Phase 1 Plan.)
 - **Slot UI scaffolding still in code, no longer surfaced**: the May 17 pattern dropdown replaced `+ assign slot` in the container header, but `labSections` / `labRecipeSlots` / `loadRecipeSlots()` / `openSlotPickerForContainer()` are all still present. Future Bean could do a sweep to remove if confident, but audit every `labSections` reference first (some live code paths still touch it for ghost-state checking).
 - **Container rename UI is functionally orphaned**: `enterContainerLabelEdit` / `onContainerLabelBlur` / `onContainerLabelKeydown` still exist and work, but the new pattern-dropdown-first layout makes the rename less prominent. Auto-inherit fires on render so labels usually look right without rename. Keep or remove depending on Anna's preference after using it for a bit.
+
+### Structured change log architecture (May 22 -- the actual destination for the export work)
+
+The May 22 export band-aid (`diffBlockSets` multi-pass matcher + ghost filter) gets `/things-to-do` exports working in time for the next round of UX briefs, but it's a band-aid -- it INFERS what changed by comparing two snapshots, which loses information whenever Anna does heavy editing + reordering of the same block. The real fix is to **not throw the change history away in the first place**.
+
+**Anna's actual ask** (her words during the May 22 session, after we abandoned the "fuzzy matcher" framing): she wants something to "hold the threads and remember what I moved and changed where," so flipping between V_A and V_B answers "what's different here?" at the granularity of *"we promoted a span to an H3, added a word to the H1, hid a paragraph"* -- without her having to reconstruct it from snapshots. Three use cases she named explicitly:
+
+1. **Experimental record per version.** Each saved V_n carries its score profile AND the structured list of edits that produced it from its parent. Eliminates the manual "what did I do here, again?" cognitive load. The "Why V8 over V11?" question has a precise answer.
+2. **Cross-experiment pattern analysis.** Once edit logs exist across runs, questions like "what edits shift entity confidence vs category confidence?" become queryable across the dataset. Phase B becomes materially more rigorous and replicable.
+3. **Dev brief in either flavor.** Final-state document OR full changelog from V0/V0.5 → V_final, both derivable from the same data without manual labeling.
+
+**Shape:**
+- Each permutation gets a `parent_perm_id` (FK to previous version) and a `change_log` (JSONB array of structured events).
+- Event types: `block_edit_title{old,new}`, `block_edit_body{old,new}`, `block_level_change{old,new}`, `block_ghost`, `block_unghost`, `block_move{from,to}`, `block_add`, `block_delete`, `container_rename{old,new}`, `container_pattern_change{old,new}`, `container_move{from,to}`.
+- Lab hooks every edit handler to push events into a session-level log. On Save, events get attached to the new perm row, session log clears.
+- Comparison view replaces the inference-based diff with parent-chain walk + event replay between V_A and V_B. Answer is exact.
+- `matrix.html` (T22/T23) finally has a job: each cell renders score profile + "edits from V0" summary. Reading the matrix becomes a research activity, not a guessing game.
+
+**Adjacent fixes that come along for the ride:**
+- Container labels auto-update from top H-tag on every edit, not just initial render (Anna mentioned this is currently broken).
+- "Edited" tag becomes specific (`title-edited`, `body-edited`, `ghosted`, etc.) instead of a binary lie.
+
+**Out of scope for this thread:** the embedding-based or NLP-based "what does this edit do to the signal?" analysis layer. That sits on top once the change log exists.
+
+**Scoping note:** the band-aid matcher is throwaway code once this lands. Pass-3 text-similarity is the part that ages worst -- it'll mis-match heavy-edit-and-move cases that the change log handles natively. Estimated effort for the change-log build: multi-session arc, schema migration + event-recorder + replay-based comparison view + matrix wire-up. Defer scoping until Anna's got her immediate UX briefs out.
 
 ### Architectural threads (May 14 audit + May 17 reground; lean scope kept us out of these)
 
