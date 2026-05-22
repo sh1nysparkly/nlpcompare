@@ -85,7 +85,7 @@ Funding window is short. Optimize for what makes Anna's pushback case land with 
 - **H** Anna's captured idea list -- six items shipped May 17, ~12 still open. Promote when ready.
 
 **Priority 6 (newly surfaced May 17):**
-- Legacy V0/V0.5 permutation backfill -- pre-May-17 rows lack `block_id` / `original_html`; re-saving upgrades them. Could be a one-time UPDATE migration if it gets annoying.
+- Legacy V0/V0.5 permutation backfill -- **DONE May 19**, migration `backfill_permutations_block_ids` patched all 81 rows (5351 blocks) by injecting UUIDs into any block lacking `block_id` / `curation_block_id` / `id`. `original_html` left as-is (V0.5 mostly has it; V0 doesn't; synthesis would be lossy). Root-cause fix (upstream load path leaks null IDs) is tracked in `lab-state` followups.
 - Slot machinery sweep -- the `+ assign slot` UI is decommissioned but the supporting code is intact. Optional cleanup; audit-heavy.
 
 ---
