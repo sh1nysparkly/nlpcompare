@@ -151,9 +151,17 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 - **Slot UI scaffolding still in code, no longer surfaced**: the May 17 pattern dropdown replaced `+ assign slot` in the container header, but `labSections` / `labRecipeSlots` / `loadRecipeSlots()` / `openSlotPickerForContainer()` are all still present. Future Bean could do a sweep to remove if confident, but audit every `labSections` reference first (some live code paths still touch it for ghost-state checking).
 - **Container rename UI is functionally orphaned**: `enterContainerLabelEdit` / `onContainerLabelBlur` / `onContainerLabelKeydown` still exist and work, but the new pattern-dropdown-first layout makes the rename less prominent. Auto-inherit fires on render so labels usually look right without rename. Keep or remove depending on Anna's preference after using it for a bit.
 
-### Structured change log architecture (May 22 -- the actual destination for the export work)
+### Structured change log architecture (May 22 -- session 1 SHIPPED; sessions 2+ in flight)
 
-The May 22 export band-aid (`diffBlockSets` multi-pass matcher + ghost filter) gets `/things-to-do` exports working in time for the next round of UX briefs, but it's a band-aid -- it INFERS what changed by comparing two snapshots, which loses information whenever Anna does heavy editing + reordering of the same block. The real fix is to **not throw the change history away in the first place**.
+**Session 1 shipped (commit `<pending session-1>`):** Schema + foundation event recorder for the three highest-frequency edit types. What landed:
+
+- `permutations.parent_perm_id` column (uuid, nullable, FK to `permutations.id` ON DELETE SET NULL)
+- `permutation_changes` table (id, permutation_id FK CASCADE, event_order, event_type, target_block_id, target_container_id, old_value jsonb, new_value jsonb, created_at). Indexes on `permutation_id` and `event_type`. Permissive RLS matching the solo-user posture in `memory/rls-permutations-intentional.md`.
+- `labChangeLog` + `labParentPermId` globals in `lab/index.html`. `recordChange(event)` helper + `persistChangeLog(permId)` helper.
+- Event recording wired into three edit paths: `commitBlockEdit` (both html_authored and plain-text branches — emits `block_edit_title` or `block_edit_body`) and `cycleBlockLevel` (emits `block_level_change`).
+- Lifecycle wired: `loadSelectedPage`, `loadVersionIntoLab`, and `resetBlockOrder` clear the change log and set `labParentPermId` to whatever version was loaded (V0 row's id if exists, perm's id if a Vn was loaded, NULL for parsed-from-curation V0). `commitSavePermutation` writes `parent_perm_id` on the new row, persists `labChangeLog` to `permutation_changes`, clears the log, and updates `labParentPermId` to the freshly-saved perm's id. `commitOverwriteV0` and `commitOverwriteV05` clear the log and update parent_perm_id but DON'T persist events (overwrite semantics deferred).
+
+Verified end-to-end against the PostgREST endpoint (insert + read-back + jsonb round-trip). Existing perms all have `parent_perm_id = NULL` (column was just added); new saves from this point forward chain via the column.
 
 **Anna's actual ask** (her words during the May 22 session, after we abandoned the "fuzzy matcher" framing): she wants something to "hold the threads and remember what I moved and changed where," so flipping between V_A and V_B answers "what's different here?" at the granularity of *"we promoted a span to an H3, added a word to the H1, hid a paragraph"* -- without her having to reconstruct it from snapshots. Three use cases she named explicitly:
 
@@ -161,20 +169,37 @@ The May 22 export band-aid (`diffBlockSets` multi-pass matcher + ghost filter) g
 2. **Cross-experiment pattern analysis.** Once edit logs exist across runs, questions like "what edits shift entity confidence vs category confidence?" become queryable across the dataset. Phase B becomes materially more rigorous and replicable.
 3. **Dev brief in either flavor.** Final-state document OR full changelog from V0/V0.5 → V_final, both derivable from the same data without manual labeling.
 
-**Shape:**
-- Each permutation gets a `parent_perm_id` (FK to previous version) and a `change_log` (JSONB array of structured events).
-- Event types: `block_edit_title{old,new}`, `block_edit_body{old,new}`, `block_level_change{old,new}`, `block_ghost`, `block_unghost`, `block_move{from,to}`, `block_add`, `block_delete`, `container_rename{old,new}`, `container_pattern_change{old,new}`, `container_move{from,to}`.
-- Lab hooks every edit handler to push events into a session-level log. On Save, events get attached to the new perm row, session log clears.
-- Comparison view replaces the inference-based diff with parent-chain walk + event replay between V_A and V_B. Answer is exact.
-- `matrix.html` (T22/T23) finally has a job: each cell renders score profile + "edits from V0" summary. Reading the matrix becomes a research activity, not a guessing game.
+**Event taxonomy (Anna-confirmed May 22):**
 
-**Adjacent fixes that come along for the ride:**
-- Container labels auto-update from top H-tag on every edit, not just initial render (Anna mentioned this is currently broken).
+| Event type | Status | Notes |
+|---|---|---|
+| `block_edit_title` | SHIPPED session 1 | from `commitBlockEdit(field="title")` |
+| `block_edit_body` | SHIPPED session 1 | from both branches of `commitBlockEdit(field="body_text")` -- plain-text AND html_authored |
+| `block_level_change` | SHIPPED session 1 | from `cycleBlockLevel` |
+| `block_ghost` / `block_unghost` | OPEN session 2 | block-level `toggleBlockGhost` |
+| `block_move` | OPEN session 2 | individual block drag-drop; fields: `from_container`, `to_container`, `from_position`, `to_position` |
+| `block_add` | OPEN session 2 | `addBlockToContainer` (no target_block_id since the block didn't exist yet -- record `new_value` with the synthesized block shape) |
+| `block_delete` | OPEN session 2 | once block delete is built (Cluster 3 backlog item) |
+| `container_add` | OPEN session 2 | `addCustomContainer` |
+| `container_move` | OPEN session 2 | container-header drag; Anna explicitly wanted this as its own intent-capturing event, NOT inferred from N block_moves |
+| `container_ghost` / `container_unghost` | OPEN session 2 | when pattern dropdown set to "ghost" (and reverse). Behavior-changing, qualitatively different from other pattern changes which we DON'T track |
+| `container_rename` | SKIPPED | per Anna -- auto-inherited from top H-tag mostly, would double-count title edits |
+| `container_pattern_change` (non-ghost) | SKIPPED | per Anna -- metadata, not behavior |
+| Score WIP | SKIPPED | per Anna -- action, not edit; score profile already on the saved perm row |
+
+**Still open after session 1:**
+
+- **Session 2: rest of the event taxonomy.** Above table's "OPEN session 2" rows. Hook each into its respective edit handler. Adds maybe 100-150 lines of recordChange calls + a couple new edit handlers where needed (e.g., container_unghost may need a touch in the pattern-change handler).
+- **Session 3: replay-based comparison view.** Walks parent_perm_id chain from V_A and V_B back to common ancestor, composes the events between, surfaces "what's different" without ID-based snapshot inference. Replaces the band-aid matcher's role in the export. Probably exposes a new modal or panel rather than rewriting `buildPlainLanguageExport`.
+- **Session 4 (stretch): `matrix.html` wire-up.** Each cell renders score profile + edit summary from V0. Resolves T22/T23.
+- **Session 5+: cross-experiment pattern analysis.** Once events accumulate across pages, queryable surface. Emerges from #1 organically.
+
+**Adjacent fixes that come along the ride (mentioned by Anna May 22, not in session 1):**
+
+- Container labels auto-update from top H-tag on every edit, not just initial render (Anna mentioned this is currently broken -- container names don't sync with their top heading after rename).
 - "Edited" tag becomes specific (`title-edited`, `body-edited`, `ghosted`, etc.) instead of a binary lie.
 
-**Out of scope for this thread:** the embedding-based or NLP-based "what does this edit do to the signal?" analysis layer. That sits on top once the change log exists.
-
-**Scoping note:** the band-aid matcher is throwaway code once this lands. Pass-3 text-similarity is the part that ages worst -- it'll mis-match heavy-edit-and-move cases that the change log handles natively. Estimated effort for the change-log build: multi-session arc, schema migration + event-recorder + replay-based comparison view + matrix wire-up. Defer scoping until Anna's got her immediate UX briefs out.
+**Scoping note:** the band-aid matcher (`893aa7e`) keeps the export working in the meantime. It becomes throwaway code once session 3's comparison view lands -- pass-3 text-similarity is the part that ages worst.
 
 ### Architectural threads (May 14 audit + May 17 reground; lean scope kept us out of these)
 
