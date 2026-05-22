@@ -130,7 +130,7 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 
 ## Recent commits (May 22, 2026, branch `claude/funny-franklin-9CRjS` -- in flight, not yet merged to main)
 
-- `<pending>` -- Band-aid fix for plain-language export bug surfaced on `/things-to-do`. Two changes:
+- `893aa7e` -- Band-aid fix for plain-language export bug surfaced on `/things-to-do`. Two changes:
   1. **`diffBlockSets` rewritten as multi-pass matcher.** Used to be a single-pass ID lookup that fell apart when the May 19 backfill assigned independent random UUIDs across permutation rows -- logically-identical blocks got different IDs, diff read everything as NEW. Now matches in three passes: stable-ID lookup (preserves cases where IDs do line up); positional alignment within `(container_id, level)` buckets (catches title rewrites in place, the dominant edit pattern in optimization briefs); text similarity via Jaccard on word tokens (catches moves and heavier rewrites). Result-map key scheme changed from `<stableId>` to `"a:<idx>"` / `"b:<idx>"` so blocks without IDs participate in the diff (previously silently dropped). `renderOutlineMarkdown` and `findMoveAnchor` updated to query by the new keys.
   2. **Ghost filter in `buildPlainLanguageExport`.** Strips `is_ghost: true` blocks from both active and target before diffing. Matches the intent documented in `LAB_PATTERNS["ghost"]` ("Excluded from NLP scoring + export") that the implementation never actually delivered. Anna's workflow uses ghosting as the "REMOVED in proposal" signal -- by filtering active ghosts before the diff, their baseline counterparts naturally fall into the REMOVED bucket. Defensive double-check in `renderOutlineMarkdown` too.
 
