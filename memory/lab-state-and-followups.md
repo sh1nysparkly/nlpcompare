@@ -36,17 +36,22 @@ Cycling either picker only changes its own column. Cycling the pinned picker doe
 
 `getColumnNlp(slot)` in `renderNlpDeltas` is the single source of truth for column data. Do not reintroduce "active = baseline" mediation -- it inverts the mental model in the common case where the user keeps their baseline in the LEFT picker and cycles comparisons on the RIGHT.
 
-### Per-container NLP must re-run on version change
+### Per-container NLP must re-run on version change AND on Score WIP
 
-Container IDs are positional (`"c0"`, `"c1"`, ...). The same id can hold different content in V0 vs V0.5 vs V_n. `scoreContainersForLab()` must be called whenever a version is loaded so the entities panel reflects the loaded version, not whichever version was loaded at page-load time.
+Container IDs are positional (`"c0"`, `"c1"`, ...). The same id can hold different content in V0 vs V0.5 vs V_n. `scoreContainersForLab()` must be called whenever a version is loaded **or** whenever a WIP score is computed -- otherwise the per-container pills freeze at version-load-time attribution while the page-level scorecard updates around them.
 
-The function takes `{ blocks, versionTag }`. `loadVersionIntoLab` calls it with `labBlocks` and a version-specific cache tag. HTML synthesis falls back to `regenerateBlockHtml(b)` for trimmed-perm blocks that don't carry `original_html`. The `cacheMeta.source` includes the version tag so different versions cache separately.
+The function takes `{ blocks, versionTag }`. Call sites as of May 19:
+- `loadVersionIntoLab` -- on version change, with `labBlocks` + a version-specific cache tag
+- `scoreWip` -- after the page-level Score WIP completes, with `labBlocks` + a `wip-<shortLabel>` cache tag (added in `8cad4e3` May 19; cache is content-addressed so unchanged containers return instantly)
+- Initial page load
+
+HTML synthesis falls back to `regenerateBlockHtml(b)` for trimmed-perm blocks that don't carry `original_html`. The `cacheMeta.source` includes the version tag so different versions cache separately.
 
 ### Container pattern dropdown is the canonical container affordance (May 17)
 
 The pattern dropdown (`<select class="container-pattern-select">`) replaced the `+ assign slot` button + recipe-slot pill UI in the container header. The slot data structures (`labSections`, `labRecipeSlots`, `openSlotPickerForContainer`) are still in code for back-compat but no UI exposes them anymore. See `memory/pattern-taxonomy-and-export.md` for the full substrate writeup.
 
-Ghost is now a pattern option (`pattern_key="ghost"`, displayed as "🫥 Misc" after Anna's relabel). Selecting it flips `block.is_ghost=true` on every block in the container, so the existing scoring-exclusion path picks it up. Legacy `slotInfo.is_ghost` still honored on load for any pre-pattern data.
+Ghost is now a pattern option (`pattern_key="ghost"`, displayed as "🫥 Misc" after Anna's relabel). Selecting it flips `block.is_ghost=true` on every block in the container. Page-level `blocksToHtml()` and the `</>` diagnostic modal already filtered ghosts; per-container `scoreContainersForLab()` was added to the same filter in `8cad4e3` (May 19) -- before that, ghosting blocks at the container level would update the page-level scorecard while the container pills kept showing pre-ghost attribution. All three surfaces now agree. Legacy `slotInfo.is_ghost` still honored on load for any pre-pattern data.
 
 Container left-edge color now reads from `pattern.badge_color` instead of `slotInfo.color`. Empty pattern = no border.
 
@@ -105,6 +110,19 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 **Schema migrations applied via Supabase MCP** (project `signal-coherence` / `ghzfrxxevjjfgpxvmahy`):
 - `add_pattern_key_to_lp_blocks` (May 17) -- `lp_blocks.pattern_key text` (nullable)
 - `add_is_live_baseline_to_permutations` (May 17) -- `permutations.is_live_baseline boolean NOT NULL DEFAULT false`
+
+## Recent commits (May 19, 2026, branch `claude/fix-things-to-do-page-2y5v8` → merged to main as PR #16)
+
+- `8cad4e3` -- Page Lab: respect ghost + refresh per-container NLP on Score WIP. Two related bugs in `scoreContainersForLab()`: (1) didn't filter ghosted blocks before scoring, so ghosting a block left its content still feeding the container's NLP call (page-level and `</>` modal both filtered ghosts; per-container scoring was the silent outlier); (2) `scoreWip()` didn't re-run per-container scoring after updating page-level NLP, so the pills froze at version-load-time attribution. Together explained Anna's "I ghosted all the FAQ content and the container still reads Tourist Destinations 69%." Single commit, 23 lines in `lab/index.html`.
+
+## Recent commits (May 19, 2026, branch `claude/signal-coherence-infrastructure-LOqVh` -- in flight, not yet merged to main)
+
+- `943fe64` -- Supabase: enable RLS on permutations with permissive policy (solo-user posture). Stops the toggle loop where the `rls_disabled_in_public` ERROR kept prompting Beans to re-enable RLS and Anna kept re-enabling after. Permissive `anon_all_access` policy = functionally RLS-off, but advisor downgrades ERROR → WARN. Memory doc at `memory/rls-permutations-intentional.md` documents the intentional posture so future Beans don't keep "fixing" it.
+- `b6687ac` -- Supabase: backfill `block_id` UUIDs on all permutation blocks lacking stable IDs. 100% of V0 + V0.5 baselines (7 pages, 446 blocks) plus 4905 regular-permutation blocks had no `block_id` / `curation_block_id` / `id`, breaking the export's diff matching. Backfill injected UUIDs into `block_id` only for blocks with all-three-null state. 5351 blocks patched across 81 rows; zero unmatchable remaining. Root cause (load path leaks null IDs) tracked as new followup.
+
+**Schema migrations applied via Supabase MCP** (May 19):
+- `permutations_rls_permissive_solo_user` -- RLS enable + `anon_all_access FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)`. See `memory/rls-permutations-intentional.md`.
+- `backfill_permutations_block_ids` -- DML UPDATE injecting UUIDs into `block_id` for any block with all three ID fields null.
 
 ## Open followups
 
