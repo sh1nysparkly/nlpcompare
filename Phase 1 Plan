@@ -56,7 +56,7 @@ Numbers verified via Explore-agent reconnaissance against `lab/index.html`, `lab
 | Block deletion | OUTSTANDING (Cluster 3) | Anna confirmed needed; touches drag-drop logic |
 | matrix.html | EXISTS (uncoordinated) | Functional Supabase-wired prototype, built without Anna's co-design - see T22 |
 | Slot UI cleanup (decommissioned May 17, code still present) | NEW (post-May-17) | `+ assign slot` UI removed but `labSections` / `labRecipeSlots` / `openSlotPickerForContainer` / `assignSlotToContainer` all still in code. Audit before sweeping |
-| RLS disabled on `permutations` | NEW (flagged May 17) | Pre-existing security issue surfaced via Supabase advisor. Anon key has full read/write. Fix needs RLS enable + policies matching Lab/bridge access patterns |
+| RLS on `permutations` | **DONE May 19** | Enabled RLS + permissive `anon_all_access` policy via migration `permutations_rls_permissive_solo_user`. Solo-user posture: see `memory/rls-permutations-intentional.md`. Advisor now shows `rls_policy_always_true` WARN instead of `rls_disabled_in_public` ERROR -- that's the intentional steady state |
 | Slot × intent diagnostic | OUTSTANDING (T19) | Highest exec leverage per north star §10 |
 | Pre-launch HTML in matrix | OUTSTANDING (T20) | Pre-launch is evidence, not benchmark |
 | Block drift gradient | OUTSTANDING (T21) | Activates dormant embeddings infra |
@@ -85,7 +85,6 @@ Funding window is short. Optimize for what makes Anna's pushback case land with 
 - **H** Anna's captured idea list -- six items shipped May 17, ~12 still open. Promote when ready.
 
 **Priority 6 (newly surfaced May 17):**
-- RLS on `public.permutations` -- security cleanup, do alongside any other schema work in that area.
 - Legacy V0/V0.5 permutation backfill -- pre-May-17 rows lack `block_id` / `original_html`; re-saving upgrades them. Could be a one-time UPDATE migration if it gets annoying.
 - Slot machinery sweep -- the `+ assign slot` UI is decommissioned but the supporting code is intact. Optional cleanup; audit-heavy.
 
