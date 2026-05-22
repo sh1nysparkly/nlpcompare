@@ -128,7 +128,7 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 - `permutations_rls_permissive_solo_user` -- RLS enable + `anon_all_access FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)`. See `memory/rls-permutations-intentional.md`.
 - `backfill_permutations_block_ids` -- DML UPDATE injecting UUIDs into `block_id` for any block with all three ID fields null. **Caveat (uncovered May 22):** the backfill minted INDEPENDENT random UUIDs per row, which means V0 row's "block 0" and V0.5 row's "block 0" -- logically the same block -- got DIFFERENT UUIDs. Plus `labBlocks` from `loadBlocksFromCuration` uses `curation_block_id` (the `"c0-b0"`-style positional code), not `block_id`. Net effect: ID-based diffing went from "no IDs to match against" to "IDs that all mismatch" -- export read everything as NEW. Fixed at the matcher layer May 22 (`diffBlockSets` now does multi-pass structural matching that doesn't depend on ID overlap). The backfilled UUIDs are now harmless; no data rollback needed.
 
-## Recent commits (May 22, 2026, branch `claude/funny-franklin-9CRjS` -- in flight, not yet merged to main)
+## Recent commits (May 22, 2026, branch `claude/funny-franklin-9CRjS` -- merged to main as PRs #18 and #19)
 
 - `893aa7e` -- Band-aid fix for plain-language export bug surfaced on `/things-to-do`. Two changes:
   1. **`diffBlockSets` rewritten as multi-pass matcher.** Used to be a single-pass ID lookup that fell apart when the May 19 backfill assigned independent random UUIDs across permutation rows -- logically-identical blocks got different IDs, diff read everything as NEW. Now matches in three passes: stable-ID lookup (preserves cases where IDs do line up); positional alignment within `(container_id, level)` buckets (catches title rewrites in place, the dominant edit pattern in optimization briefs); text similarity via Jaccard on word tokens (catches moves and heavier rewrites). Result-map key scheme changed from `<stableId>` to `"a:<idx>"` / `"b:<idx>"` so blocks without IDs participate in the diff (previously silently dropped). `renderOutlineMarkdown` and `findMoveAnchor` updated to query by the new keys.
@@ -151,7 +151,7 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 - **Slot UI scaffolding still in code, no longer surfaced**: the May 17 pattern dropdown replaced `+ assign slot` in the container header, but `labSections` / `labRecipeSlots` / `loadRecipeSlots()` / `openSlotPickerForContainer()` are all still present. Future Bean could do a sweep to remove if confident, but audit every `labSections` reference first (some live code paths still touch it for ghost-state checking).
 - **Container rename UI is functionally orphaned**: `enterContainerLabelEdit` / `onContainerLabelBlur` / `onContainerLabelKeydown` still exist and work, but the new pattern-dropdown-first layout makes the rename less prominent. Auto-inherit fires on render so labels usually look right without rename. Keep or remove depending on Anna's preference after using it for a bit.
 
-### Structured change log architecture (May 22 -- session 1 SHIPPED; sessions 2+ in flight)
+### Structured change log architecture (May 22 -- sessions 1+2 SHIPPED; sessions 3+ in flight)
 
 **Session 1 shipped (commit `a4ab768`):** Schema + foundation event recorder for the three highest-frequency edit types. What landed:
 
@@ -162,6 +162,18 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 - Lifecycle wired: `loadSelectedPage`, `loadVersionIntoLab`, and `resetBlockOrder` clear the change log and set `labParentPermId` to whatever version was loaded (V0 row's id if exists, perm's id if a Vn was loaded, NULL for parsed-from-curation V0). `commitSavePermutation` writes `parent_perm_id` on the new row, persists `labChangeLog` to `permutation_changes`, clears the log, and updates `labParentPermId` to the freshly-saved perm's id. `commitOverwriteV0` and `commitOverwriteV05` clear the log and update parent_perm_id but DON'T persist events (overwrite semantics deferred).
 
 Verified end-to-end against the PostgREST endpoint (insert + read-back + jsonb round-trip). Existing perms all have `parent_perm_id = NULL` (column was just added); new saves from this point forward chain via the column.
+
+**Session 2 shipped (commit `<TBD>`):** Rest of the event taxonomy (minus `block_delete`, which is waiting on a handler that doesn't exist yet -- Cluster 3 backlog item). Eight new event types wired across seven handlers; one new helper. What landed:
+
+- `getContainerNeighbors(containerId)` helper in `lab/index.html` (near `recordChange` / `persistChangeLog`). Returns `{before_container_id, after_container_id}` by walking labBlocks and building the ordered list of unique container_ids. Anchor-based, not numeric-index-based -- replays survive unrelated edits that don't touch the target's immediate neighbors.
+- `block_ghost` / `block_unghost` in `toggleBlockGhost`. Single recordChange call, conditional event_type by the post-mutation `block.is_ghost` value.
+- `container_ghost` / `container_unghost` in `onContainerPatternChange`. Transition detector: reads first-block's `pattern_key` before mutation, fires only when crossing the ghost boundary in either direction. Non-ghost pattern changes (e.g. `value_props` → `deal_cards_tabs`) emit no event, per Anna's "metadata, not behavior" call.
+- `block_move` in `onDrop`. Snapshots `prev_block_id` (stable id of block immediately before the source in labBlocks) before the splice; resolves the new `prev_block_id` after. `old_value` / `new_value` both carry `{prev_block_id, container_id}`. The drop logic doesn't reassign `container_id`, so the two container_ids match in current behavior -- shape supports cross-container moves if/when that drop semantics changes.
+- `block_add` in `addBlockToContainer`. New blocks now mint `block_id` via `crypto.randomUUID()` at creation -- closes the "Load path leaks null block_id" followup for Lab-born blocks (still applies to curation-load path). `new_value` carries `{title, body_text, level, container_id}`.
+- `container_add` in `addCustomContainer`. Starter block also gets `crypto.randomUUID()`-minted `block_id`. `new_value` carries `{container_label, starter_block_id, starter_title, starter_level}`.
+- `container_move` from three callsites: `swapContainers` (fires two events -- both containers moved as part of the gesture; each event records its own before/after neighbors), `insertContainerBefore` (one event), `moveContainerToEnd` (one event). Old/new neighbors via `getContainerNeighbors`.
+
+Section-drag paths (`swapSections` / `moveSectionToBefore`) intentionally NOT wired -- sections are decommissioned legacy infrastructure per Anna's May 22 call. Events would record "what" but not "why" since the UI surface is no longer the primary affordance. Replay engine in session 3 will see labBlocks differences without explanatory events for section-drag legacy operations; acceptable edge case.
 
 **Anna's actual ask** (her words during the May 22 session, after we abandoned the "fuzzy matcher" framing): she wants something to "hold the threads and remember what I moved and changed where," so flipping between V_A and V_B answers "what's different here?" at the granularity of *"we promoted a span to an H3, added a word to the H1, hid a paragraph"* -- without her having to reconstruct it from snapshots. Three use cases she named explicitly:
 
@@ -176,20 +188,21 @@ Verified end-to-end against the PostgREST endpoint (insert + read-back + jsonb r
 | `block_edit_title` | SHIPPED session 1 | from `commitBlockEdit(field="title")` |
 | `block_edit_body` | SHIPPED session 1 | from both branches of `commitBlockEdit(field="body_text")` -- plain-text AND html_authored |
 | `block_level_change` | SHIPPED session 1 | from `cycleBlockLevel` |
-| `block_ghost` / `block_unghost` | OPEN session 2 | block-level `toggleBlockGhost` |
-| `block_move` | OPEN session 2 | individual block drag-drop; fields: `from_container`, `to_container`, `from_position`, `to_position` |
-| `block_add` | OPEN session 2 | `addBlockToContainer` (no target_block_id since the block didn't exist yet -- record `new_value` with the synthesized block shape) |
-| `block_delete` | OPEN session 2 | once block delete is built (Cluster 3 backlog item) |
-| `container_add` | OPEN session 2 | `addCustomContainer` |
-| `container_move` | OPEN session 2 | container-header drag; Anna explicitly wanted this as its own intent-capturing event, NOT inferred from N block_moves |
-| `container_ghost` / `container_unghost` | OPEN session 2 | when pattern dropdown set to "ghost" (and reverse). Behavior-changing, qualitatively different from other pattern changes which we DON'T track |
+| `block_ghost` / `block_unghost` | SHIPPED session 2 | from `toggleBlockGhost`; conditional event_type by post-mutation `block.is_ghost` |
+| `block_move` | SHIPPED session 2 | from `onDrop`; anchor-based via `prev_block_id` so replays survive unrelated edits |
+| `block_add` | SHIPPED session 2 | from `addBlockToContainer`; mints `block_id` UUID at creation (closes null-id load-path leak for Lab-born blocks) |
+| `block_delete` | OPEN | once block delete is built (Cluster 3 backlog item). Wiring is trivial once the handler lands. |
+| `container_add` | SHIPPED session 2 | from `addCustomContainer`; starter block also UUID-minted |
+| `container_move` | SHIPPED session 2 | `swapContainers` (2 events), `insertContainerBefore` (1), `moveContainerToEnd` (1); before/after neighbor container_ids via `getContainerNeighbors` |
+| `container_ghost` / `container_unghost` | SHIPPED session 2 | transition detector in `onContainerPatternChange`; fires only when crossing the ghost boundary, not on non-ghost pattern changes |
 | `container_rename` | SKIPPED | per Anna -- auto-inherited from top H-tag mostly, would double-count title edits |
 | `container_pattern_change` (non-ghost) | SKIPPED | per Anna -- metadata, not behavior |
 | Score WIP | SKIPPED | per Anna -- action, not edit; score profile already on the saved perm row |
+| section-drag (`swapSections` / `moveSectionToBefore`) | NOT WIRED | sections decommissioned per Anna May 22; legacy machinery still alive but not an event-bearing surface |
 
-**Still open after session 1:**
+**Still open after session 2:**
 
-- **Session 2: rest of the event taxonomy.** Above table's "OPEN session 2" rows. Hook each into its respective edit handler. Adds maybe 100-150 lines of recordChange calls + a couple new edit handlers where needed (e.g., container_unghost may need a touch in the pattern-change handler).
+- **`block_delete` event** -- waiting on the block-delete handler itself (Cluster 3 backlog item). Wiring is trivial (single `recordChange` call) once the handler lands; punt until then.
 - **Session 3: replay-based comparison view.** Walks parent_perm_id chain from V_A and V_B back to common ancestor, composes the events between, surfaces "what's different" without ID-based snapshot inference. Replaces the band-aid matcher's role in the export. Probably exposes a new modal or panel rather than rewriting `buildPlainLanguageExport`.
 - **Session 4 (stretch): `matrix.html` wire-up.** Each cell renders score profile + edit summary from V0. Resolves T22/T23.
 - **Session 5+: cross-experiment pattern analysis.** Once events accumulate across pages, queryable surface. Emerges from #1 organically.
