@@ -153,7 +153,7 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 
 ### Structured change log architecture (May 22 -- session 1 SHIPPED; sessions 2+ in flight)
 
-**Session 1 shipped (commit `<pending session-1>`):** Schema + foundation event recorder for the three highest-frequency edit types. What landed:
+**Session 1 shipped (commit `a4ab768`):** Schema + foundation event recorder for the three highest-frequency edit types. What landed:
 
 - `permutations.parent_perm_id` column (uuid, nullable, FK to `permutations.id` ON DELETE SET NULL)
 - `permutation_changes` table (id, permutation_id FK CASCADE, event_order, event_type, target_block_id, target_container_id, old_value jsonb, new_value jsonb, created_at). Indexes on `permutation_id` and `event_type`. Permissive RLS matching the solo-user posture in `memory/rls-permutations-intentional.md`.
