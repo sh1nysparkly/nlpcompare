@@ -687,6 +687,17 @@ let labContainerNlp = {};   // { container_id: { categories, entities, word_coun
 let labContainerNlpInProgress = false;
 const LONG_BLOCK_THRESHOLD = 150;  // blocks with body word_count >= this default to collapsed
 
+// Structured change log (May 22 architecture; see memory/lab-state-and-followups.md
+// § "Structured change log architecture"). Replaces the "infer-edits-from-snapshot-diff"
+// approach with explicit event recording at edit-time. Each entry is a structured event:
+//   { event_type, target_block_id, target_container_id, old_value, new_value }
+// Cleared when a new page or version loads. Drained into the permutation_changes
+// table when the user Saves. parent_perm_id captures lineage (chain of edits from V0).
+// Session 1 (in flight) wires only block_edit_title / block_edit_body / block_level_change
+// -- move, ghost, add, delete, container-level events come in later sessions.
+let labChangeLog = [];
+let labParentPermId = null;  // id of the version loaded into the editor; becomes parent_perm_id on next save
+
 // Container pattern taxonomy. Hardcoded enum of canonical AMA Travel landing-page
 // container patterns. Replaces the imported container_label badge (which is
 // noisy and inconsistent) with a curated dropdown. The `editable` field is for
@@ -1997,6 +2008,10 @@ async function loadSelectedPage() {
     labExpandedBlocks.clear();
     labContainerNlp = {};      // reset; populated by scoreContainersForLab below
     nextSectionId = 1;
+    // Fresh page = fresh editing session. Discard any pending change-log events
+    // from a prior page; parent is set below once we know if a V0 row exists.
+    labChangeLog = [];
+    labParentPermId = null;
 
     // Default to outline view: every container collapsed on load. Anna scans the
     // recipe-slot list first, then expands what she wants to dig into.
@@ -2037,6 +2052,8 @@ async function loadSelectedPage() {
       labBlocks = liveBaseline.blocks.map(hydrate);
       labSections = Array.isArray(liveBaseline.sections) ? liveBaseline.sections.map(s => ({ ...s })) : [];
       labOriginalSections = labSections.map(s => ({ ...s }));
+      // V0 baseline loaded -- next save's parent is this V0 row.
+      labParentPermId = liveBaseline.id;
       // Prefer the saved nlp_result -- it was computed against the parsed
       // (non-regenerated) HTML at save time, so it's the authoritative V0
       // score. Skip the auto-scoreOriginal call when present; otherwise let
@@ -2962,6 +2979,38 @@ function blockStableId(b) {
   return b.block_id || b.curation_block_id || b.id || null;
 }
 
+// Append an edit event to the in-memory change log. event:
+//   { event_type, target_block_id?, target_container_id?, old_value?, new_value? }
+// event_order is assigned at save time based on array index. No-op caller is
+// responsible for short-circuiting when old === new (recorded events should
+// represent actual changes).
+function recordChange(event) {
+  labChangeLog.push(event);
+}
+
+// Drain labChangeLog into the permutation_changes table for the given perm id.
+// event_order is array index (0-based, chronological). Best-effort: failure
+// here doesn't undo the perm save -- we log + toast so the user knows the
+// chain is missing events for this save, but the blocks themselves persisted.
+async function persistChangeLog(permId) {
+  if (!permId || labChangeLog.length === 0) return;
+  const rows = labChangeLog.map((evt, i) => ({
+    permutation_id: permId,
+    event_order: i,
+    event_type: evt.event_type,
+    target_block_id: evt.target_block_id || null,
+    target_container_id: evt.target_container_id || null,
+    old_value: evt.old_value || null,
+    new_value: evt.new_value || null,
+  }));
+  try {
+    await postgrest("/permutation_changes", { method: "POST", body: rows });
+  } catch (e) {
+    console.error("persistChangeLog error:", e);
+    showToast("Save succeeded but change log persist failed: " + e.message);
+  }
+}
+
 // Multi-pass block matcher. Used to be a single-pass ID lookup that fell apart
 // when the May 19 backfill (b6687ac) assigned independent random UUIDs across
 // permutation rows -- so logically-identical blocks got different IDs in
@@ -3640,6 +3689,7 @@ function commitBlockEdit(blockIndex, field, rawText) {
     // No-op if nothing actually changed (avoid spurious edited flags on click-and-leave).
     if (raw === oldHtml && willBeAuthored === oldAuthored) return;
 
+    const oldBodyTextForLog = block.body_text || "";
     if (willBeAuthored) {
       block.body_html = raw;
       block.html_authored = true;
@@ -3659,6 +3709,17 @@ function commitBlockEdit(blockIndex, field, rawText) {
     }
     block.original_html = regenerateBlockHtml(block);
     block.edited = true;
+    // Record the body_text change (the user-meaningful delta). The html_authored
+    // flag is metadata; only the resulting text counts as an edit event.
+    if (block.body_text !== oldBodyTextForLog) {
+      recordChange({
+        event_type: "block_edit_body",
+        target_block_id: blockStableId(block),
+        target_container_id: block.container_id || null,
+        old_value: { body_text: oldBodyTextForLog },
+        new_value: { body_text: block.body_text || "" },
+      });
+    }
 
     labIsRearranged = blocksDifferFromOriginal();
     const wipBtn = document.getElementById("btn-score-wip");
@@ -3688,6 +3749,13 @@ function commitBlockEdit(blockIndex, field, rawText) {
   }
   block.original_html = regenerateBlockHtml(block);
   block.edited = true;
+  recordChange({
+    event_type: field === "title" ? "block_edit_title" : "block_edit_body",
+    target_block_id: blockStableId(block),
+    target_container_id: block.container_id || null,
+    old_value: { [field]: oldNorm },
+    new_value: { [field]: newNorm },
+  });
 
   labIsRearranged = blocksDifferFromOriginal();
   const wipBtn = document.getElementById("btn-score-wip");
@@ -4136,6 +4204,13 @@ function cycleBlockLevel(blockIndex) {
   block.level = newLevel;
   block.edited = true;
   block.original_html = regenerateBlockHtml(block);
+  recordChange({
+    event_type: "block_level_change",
+    target_block_id: blockStableId(block),
+    target_container_id: block.container_id || null,
+    old_value: { level: cur },
+    new_value: { level: newLevel },
+  });
   labIsRearranged = blocksDifferFromOriginal();
   renderBlockList();
   const status = document.getElementById("score-status");
@@ -4296,6 +4371,11 @@ function resetBlockOrder() {
   labRearrangedNlp = null;
   labSelectedBlockIndices.clear();
   labExpandedBlocks.clear();
+  // Reset throws away the WIP edits, so the change log goes with them.
+  // Parent stays whatever the original-baseline lineage was (set at load).
+  labChangeLog = [];
+  const liveBaseline = (labPermutations || []).find(p => p.is_live_baseline);
+  labParentPermId = liveBaseline ? liveBaseline.id : null;
   // Match page-load default: outline view (everything collapsed).
   labCollapsedContainers = new Set();
   labBlocks.forEach(b => { if (b.container_id) labCollapsedContainers.add(b.container_id); });
@@ -4957,12 +5037,20 @@ function loadVersionIntoLab(ver) {
   if (ver.kind === "original") {
     labBlocks = JSON.parse(JSON.stringify(labOriginalBlocks));
     labSections = JSON.parse(JSON.stringify(labOriginalSections));
+    // V0 row id if a live-baseline exists, else null (parsed-from-curation V0).
+    const liveBaseline = (labPermutations || []).find(p => p.is_live_baseline);
+    labParentPermId = liveBaseline ? liveBaseline.id : null;
   } else if (ver.perm) {
     labBlocks = JSON.parse(JSON.stringify(ver.perm.blocks));
     labSections = ver.perm.sections ? JSON.parse(JSON.stringify(ver.perm.sections)) : [];
+    labParentPermId = ver.perm.id;
   } else {
     return;
   }
+  // Fresh version loaded = fresh editing session. Events from the prior
+  // session are discarded (they were either already persisted on save, or
+  // belong to a different parent chain and would mis-attribute if kept).
+  labChangeLog = [];
   labExpandedBlocks.clear();
   // Default to the outline (everything-collapsed) view that page-load uses,
   // so loading a version doesn't dump a giant expanded list on the user.
@@ -5100,6 +5188,12 @@ async function commitOverwriteV05(existingPerm) {
       method: "PATCH",
       body: patch,
     });
+    // Overwrite paths don't persist the change log (session 1 scope: only
+    // new-perm saves chain events). The editor state now matches the saved
+    // row, so the in-memory log is discarded and the V0.5 row becomes the
+    // parent for any subsequent save.
+    labChangeLog = [];
+    labParentPermId = existingPerm.id;
     await loadPermutations();
     // Keep the active picker pointing at V0.5 after the overwrite.
     const list = getVersionList();
@@ -5133,6 +5227,7 @@ async function commitOverwriteV0() {
   const existing = (labPermutations || []).find(p => p.is_live_baseline);
 
   try {
+    let v0Id;
     if (existing && existing.id) {
       await postgrest("/permutations?id=eq." + encodeURIComponent(existing.id), {
         method: "PATCH",
@@ -5142,9 +5237,11 @@ async function commitOverwriteV0() {
           nlp_result: labRearrangedNlp || existing.nlp_result || null,
         },
       });
+      v0Id = existing.id;
     } else {
-      // First-time INSERT: create the flagged row.
-      await postgrest("/permutations", {
+      // First-time INSERT: create the flagged row. parent_perm_id stays NULL
+      // -- V0 is the root of the lineage chain by definition.
+      const inserted = await postgrest("/permutations", {
         method: "POST",
         body: {
           slug: labSlug,
@@ -5157,7 +5254,13 @@ async function commitOverwriteV0() {
           nlp_result: labRearrangedNlp || labOriginalNlp || null,
         },
       });
+      v0Id = Array.isArray(inserted) && inserted.length ? inserted[0].id : null;
     }
+    // V0 is the root of every lineage chain on this page; subsequent saves
+    // derive from this V0 state. Drop any pending change-log events --
+    // overwrite paths don't persist them (session 1 scope).
+    labChangeLog = [];
+    labParentPermId = v0Id;
     await loadPermutations();
     // Keep cursor pointed at V0 after the overwrite.
     const list = getVersionList();
@@ -5206,11 +5309,21 @@ async function commitSavePermutation() {
     blocks: trimmedBlocks,
     sections: sourceSections,
     nlp_result: sourceNlp,
+    parent_perm_id: labParentPermId,
   };
 
   status.textContent = "Saving permutation...";
   try {
     const result = await postgrest("/permutations", { method: "POST", body: row });
+    // Persist the change log (events Anna made in this editing session) onto
+    // the freshly-saved row, then clear so the next session starts fresh.
+    // The new perm becomes the parent of any future save derived from it.
+    const newPermId = Array.isArray(result) && result.length ? result[0].id : null;
+    if (newPermId) {
+      await persistChangeLog(newPermId);
+      labParentPermId = newPermId;
+    }
+    labChangeLog = [];
     area.style.display = "none";
     await loadPermutations();
     // After save, point the cursor at the newly-saved version so the user sees
