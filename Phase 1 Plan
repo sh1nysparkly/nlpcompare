@@ -30,7 +30,7 @@ Numbers verified via Explore-agent reconnaissance against `lab/index.html`, `lab
 | `resetBlockOrder` syncs pickers + chip | DONE | `resetBlockOrder` |
 | `resetPickersForNewPage` → `resetPickersToDefault` | DONE | renamed |
 | `is_snap_target` → `is_ux_baseline` rename | DONE | commit `7e6cad4`; zero greps for old name |
-| Dual picker → delta header (`baseLabel`) | DONE-ish | commit `3d30ce1` via `getColumnNlp(slot)`. **T0 still open - not revisited this session** |
+| Dual picker → delta header (`baseLabel`) | DONE | commit `3d30ce1` via `getColumnNlp(slot)`. **T0 closed May 19** per Anna -- rebuild accepted as-is; Cowork Bean session notes never surfaced and verification deemed moot |
 | `ux_recipe_section` column | MOOT | Intentionally kept as curation reference; 995 v12 archetype rows. Do NOT drop |
 | T5 Favicon | **DONE May 17** | commits `ab01812` + `a4e6d1d`; lives in `lab/` (deploy root) |
 | T6 "Rearrangement Lab" rename | **DONE May 17** | renamed to "Page Lab" in `ab01812` |
@@ -56,8 +56,8 @@ Numbers verified via Explore-agent reconnaissance against `lab/index.html`, `lab
 | Block deletion | OUTSTANDING (Cluster 3) | Anna confirmed needed; touches drag-drop logic |
 | matrix.html | EXISTS (uncoordinated) | Functional Supabase-wired prototype, built without Anna's co-design - see T22 |
 | Slot UI cleanup (decommissioned May 17, code still present) | NEW (post-May-17) | `+ assign slot` UI removed but `labSections` / `labRecipeSlots` / `openSlotPickerForContainer` / `assignSlotToContainer` all still in code. Audit before sweeping |
-| RLS disabled on `permutations` | NEW (flagged May 17) | Pre-existing security issue surfaced via Supabase advisor. Anon key has full read/write. Fix needs RLS enable + policies matching Lab/bridge access patterns |
-| Slot × intent diagnostic | OUTSTANDING (T19) | Highest exec leverage per north star §10 |
+| RLS on `permutations` | **DONE May 19** | Enabled RLS + permissive `anon_all_access` policy via migration `permutations_rls_permissive_solo_user`. Solo-user posture: see `memory/rls-permutations-intentional.md`. Advisor now shows `rls_policy_always_true` WARN instead of `rls_disabled_in_public` ERROR -- that's the intentional steady state |
+| Slot × intent diagnostic | DEPRIORITIZED (T19) | Per Anna May 19: "nice to have for the future, doesn't super care." The "HIGHEST exec leverage" framing in older notes was Bean-synthesis, not Anna's voice |
 | Pre-launch HTML in matrix | OUTSTANDING (T20) | Pre-launch is evidence, not benchmark |
 | Block drift gradient | OUTSTANDING (T21) | Activates dormant embeddings infra |
 
@@ -67,9 +67,10 @@ Numbers verified via Explore-agent reconnaissance against `lab/index.html`, `lab
 
 Funding window is short. Optimize for what makes Anna's pushback case land with execs, not what's elegant. Cluster 1 captured-ideas + V0 overwrite shipped May 17 -- priorities below are the post-shipment view.
 
-**Priority 1 (next session):**
-- **T0** Verify dual-picker rebuild against lost Netlify version. Still open from May 16. Blocks confidence in the editor's mental model -- has been deferred two sessions in a row because Anna hasn't surfaced the Cowork Bean's session notes yet.
-- **T19** Slot × intent diagnostic. Highest exec-legibility per north star §10 (#1 of three Phase 2 pull-forwards). Bridge already does the necessary NLP calls. **Now also unblocked by the pattern taxonomy** -- the new `LAB_PATTERNS` enum gives canonical structural slot definitions that a diagnostic could check against ("Hero pattern's editable fields are H1; does the H1 content match commercial intent?").
+**Priority 1 (next session) -- reshuffled May 19:**
+- ~~**T0**~~ **CLOSED May 19** per Anna -- rebuild accepted as-is; verification against the lost Netlify version deemed moot once Cowork Bean's session notes never resurfaced. Editor mental-model concern closed.
+- ~~**T19**~~ **DEPRIORITIZED** per Anna May 19 -- "nice to have for the future, doesn't super care." The "HIGHEST exec leverage" framing was Bean-synthesis, not Anna's voice. Stays in the doc but not next-session.
+- **Active threads (May 19 onward):** RLS permanent fix + V0/V0.5 block_id backfill shipped (see Recent commits in `lab-state`). Target keyword highlighting (T12) + matrix tool rebuild (T22/T23) are the live next-session threads.
 
 **Priority 2 (when capacity allows):**
 - **T22/T23** Matrix tool review + co-design. Anna's never looked at the existing prototype; co-design rule was violated. The plain-language export from May 17 (`buildPlainLanguageExport`) is the closest existing analogue -- co-design might want to build on its diff engine.
@@ -85,8 +86,7 @@ Funding window is short. Optimize for what makes Anna's pushback case land with 
 - **H** Anna's captured idea list -- six items shipped May 17, ~12 still open. Promote when ready.
 
 **Priority 6 (newly surfaced May 17):**
-- RLS on `public.permutations` -- security cleanup, do alongside any other schema work in that area.
-- Legacy V0/V0.5 permutation backfill -- pre-May-17 rows lack `block_id` / `original_html`; re-saving upgrades them. Could be a one-time UPDATE migration if it gets annoying.
+- Legacy V0/V0.5 permutation backfill -- **DONE May 19**, migration `backfill_permutations_block_ids` patched all 81 rows (5351 blocks) by injecting UUIDs into any block lacking `block_id` / `curation_block_id` / `id`. `original_html` left as-is (V0.5 mostly has it; V0 doesn't; synthesis would be lossy). Root-cause fix (upstream load path leaks null IDs) is tracked in `lab-state` followups.
 - Slot machinery sweep -- the `+ assign slot` UI is decommissioned but the supporting code is intact. Optional cleanup; audit-heavy.
 
 ---
@@ -95,8 +95,10 @@ Funding window is short. Optimize for what makes Anna's pushback case land with 
 
 Each thread: what / why / size (relative complexity, not hours per north star §5) / where it starts / where it ends / what it opens up.
 
-### T0 - Reconcile dual-picker rebuild against lost Netlify version [URGENT]
-**Why:** Anna's gut says `3d30ce1` (rebuild of lost `ff336dc`) "feels off" vs the Netlify-only version. The dual picker is the editor's core mental model - if the rebuild diverged, every comparison built on it is suspect.
+### T0 - Reconcile dual-picker rebuild against lost Netlify version [CLOSED May 19]
+**Closure note (May 19):** Anna confirmed the dual-picker rebuild (`3d30ce1` via `getColumnNlp(slot)`) is accepted as-is. The Cowork Bean's session notes from the lost `ff336dc` Netlify-only version never resurfaced after multiple sessions, and Anna decided verification against them was moot. Section preserved below for historical context.
+
+**Original why (preserved for record):** Anna's gut says `3d30ce1` (rebuild of lost `ff336dc`) "feels off" vs the Netlify-only version. The dual picker is the editor's core mental model - if the rebuild diverged, every comparison built on it is suspect.
 **Size:** small-to-medium. Bounded comparison work.
 **Starts:** Anna shares the Cowork Bean's notes from the Netlify-only `ff336dc` session.
 **Files:** `lab/index.html` around `getColumnNlp(slot)` (line ~3885), `renderNlpDeltas`, `memory/lab-state-and-followups.md` §"Scorecard columns map directly to picker slots."
@@ -161,8 +163,11 @@ These are tightly related. T13 is the foundation; the others compose better on t
 **Ends:** Tests pass for: NLP unwrapping (defensive against MCP response shapes), version-list builder (`getVersionList`), commit-overwrite-target detection (`getCommitOverwriteTarget`).
 **Opens:** Refactor confidence. Future Bean catches regressions on PR.
 
-### T19 - Slot × intent diagnostic [Phase 2 pull-forward, HIGHEST exec leverage]
-**Why:** Per north star §10, this is the #1 Phase 2 bit worth pulling forward. Surfaces things like "this commercial LP's hero slot is reading 70% informational." Bridge already does the NLP calls.
+### T19 - Slot × intent diagnostic [DEPRIORITIZED May 19 -- future nice-to-have per Anna]
+
+**Reframe note (May 19):** Anna's actual voice on this thread: "nice to have for the future, doesn't super care." The "HIGHEST exec leverage" / "#1 Phase 2 pull-forward" framing below was Bean-synthesis from the north star, not Anna's stated priority. Preserved for record. If/when funding pressure forces an exec-legibility artifact, this thread may re-emerge; until then it parks.
+
+**Original why (preserved for record, but Bean-voice not Anna-voice):** Per north star §10, this is the #1 Phase 2 bit worth pulling forward. Surfaces things like "this commercial LP's hero slot is reading 70% informational." Bridge already does the NLP calls.
 **Size:** medium. Per-slot NLP dispatch + UI surfacing.
 **Starts:** Inventory current slot dispatch (probably uses whole-page NLP). Design per-slot NLP request pattern using bridge edge function (`nlp_classify` or `nlp_analyze`).
 **Files:** `lab/index.html` (NLP dispatch path + new UI surface), possibly `nlp_cache` table reads.
@@ -235,8 +240,7 @@ Per north star §10, retrofit Cruises + Vacation Packages briefs against Phase B
 ## Dependency map
 
 ```
-T0 (verify dual picker) — blocking the editor's mental model trust
-    └─ unblocks confidence in any column / picker work going forward
+~~T0 (verify dual picker)~~ — CLOSED May 19. No longer blocking.
 
 T1-T6 (quick wins) — independent of everything, parallelizable
 T7-T9 (CSS hygiene) — independent, ideally one session
@@ -253,7 +257,7 @@ T13 (state centralization) — foundation
 
 T18 (testing) — foundational, parallel to T13-T17
 
-T19 (slot × intent) — independent, HIGHEST exec leverage
+T19 (slot × intent) — independent. DEPRIORITIZED May 19 per Anna (future nice-to-have, not next-session).
 T20 (pre-launch in matrix) — depends on T22/T23 progress on matrix
 T21 (block drift) — independent, activates dormant embeddings
 
