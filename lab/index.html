@@ -2655,6 +2655,11 @@ async function onContainerPatternChange(e) {
   // also flips block.is_ghost so the existing scoring-exclusion path
   // (scoreContainersForLab + scoreWip) picks it up without parallel wiring.
   const isGhost = newPatternKey === "ghost";
+  // Read the pre-mutation pattern key (first block in the container is
+  // authoritative; loadBlocksFromCuration propagates the same key to all blocks
+  // in a container). Used to detect ghost transitions for the change log.
+  const firstBlock = labBlocks.find(b => b.container_id === containerId);
+  const wasGhost = !!(firstBlock && firstBlock.pattern_key === "ghost");
   const blockIds = new Set();
   labBlocks.forEach(b => {
     if (b.container_id === containerId) {
@@ -2663,6 +2668,20 @@ async function onContainerPatternChange(e) {
       if (b.curation_block_id) blockIds.add(b.curation_block_id);
     }
   });
+  // Record the ghost transition (not the pattern change itself -- non-ghost
+  // pattern changes are metadata, not behavior). Fires only when crossing the
+  // ghost boundary in either direction.
+  if (wasGhost && !isGhost) {
+    recordChange({
+      event_type: "container_unghost",
+      target_container_id: containerId,
+    });
+  } else if (!wasGhost && isGhost) {
+    recordChange({
+      event_type: "container_ghost",
+      target_container_id: containerId,
+    });
+  }
   // Re-render to refresh the badge color on the dropdown.
   renderBlockList();
 
@@ -2813,11 +2832,18 @@ function insertContainerBefore(srcContainerId, targetContainerId) {
   const remaining = labBlocks.filter(b => b.container_id !== srcContainerId);
   const targetIdx = remaining.findIndex(b => b.container_id === targetContainerId);
   if (targetIdx < 0) return;
+  const oldNeighbors = getContainerNeighbors(srcContainerId);
   labBlocks = [
     ...remaining.slice(0, targetIdx),
     ...srcBlocks,
     ...remaining.slice(targetIdx),
   ];
+  recordChange({
+    event_type: "container_move",
+    target_container_id: srcContainerId,
+    old_value: oldNeighbors,
+    new_value: getContainerNeighbors(srcContainerId),
+  });
 }
 
 function swapContainers(idA, idB) {
@@ -2829,6 +2855,9 @@ function swapContainers(idA, idB) {
   const blocksA = labBlocks.filter(b => b.container_id === idA);
   const blocksB = labBlocks.filter(b => b.container_id === idB);
   if (!blocksA.length || !blocksB.length) return;
+
+  const oldNeighborsA = getContainerNeighbors(idA);
+  const oldNeighborsB = getContainerNeighbors(idB);
 
   const newBlocks = [];
   let aPlaced = false;
@@ -2845,6 +2874,22 @@ function swapContainers(idA, idB) {
     }
   }
   labBlocks = newBlocks;
+
+  // Two events: both containers moved as part of one gesture. Each event
+  // captures its own before/after neighbors; replay treats them as independent
+  // intent records ("A ended up between X and Y"; "B ended up between P and Q").
+  recordChange({
+    event_type: "container_move",
+    target_container_id: idA,
+    old_value: oldNeighborsA,
+    new_value: getContainerNeighbors(idA),
+  });
+  recordChange({
+    event_type: "container_move",
+    target_container_id: idB,
+    old_value: oldNeighborsB,
+    new_value: getContainerNeighbors(idB),
+  });
 }
 
 // --- Container collapse (page-outline view) ---
@@ -2986,6 +3031,29 @@ function blockStableId(b) {
 // represent actual changes).
 function recordChange(event) {
   labChangeLog.push(event);
+}
+
+// Resolve a container's neighbors in current labBlocks order. Returns the
+// container_ids immediately before and after the target in the page's
+// container sequence (null at the ends). Used by container_move events to
+// capture position as an anchor pair -- "moved from between X and Y to between
+// A and B" survives unrelated edits better than a numeric index.
+function getContainerNeighbors(containerId) {
+  const order = [];
+  const seen = new Set();
+  for (const b of labBlocks) {
+    const cid = b.container_id;
+    if (cid && !seen.has(cid)) {
+      seen.add(cid);
+      order.push(cid);
+    }
+  }
+  const i = order.indexOf(containerId);
+  if (i === -1) return { before_container_id: null, after_container_id: null };
+  return {
+    before_container_id: i > 0 ? order[i - 1] : null,
+    after_container_id: i < order.length - 1 ? order[i + 1] : null,
+  };
 }
 
 // Drain labChangeLog into the permutation_changes table for the given perm id.
@@ -3411,8 +3479,15 @@ function expandAllContainers() {
 function moveContainerToEnd(srcContainerId) {
   const srcBlocks = labBlocks.filter(b => b.container_id === srcContainerId);
   if (srcBlocks.length === 0) return;
+  const oldNeighbors = getContainerNeighbors(srcContainerId);
   labBlocks = labBlocks.filter(b => b.container_id !== srcContainerId);
   labBlocks.push(...srcBlocks);
+  recordChange({
+    event_type: "container_move",
+    target_container_id: srcContainerId,
+    old_value: oldNeighbors,
+    new_value: getContainerNeighbors(srcContainerId),
+  });
 }
 
 function renderSectionHeader(section) {
@@ -4103,7 +4178,10 @@ function addCustomContainer() {
 
   const label = "New Section";
 
+  // Mint a stable block_id for the starter block (see addBlockToContainer for
+  // the rationale; same fix for the null-id load-path leak).
   const newBlock = {
+    block_id: crypto.randomUUID(),
     title: "New section heading",
     body_text: "",
     level: 2,
@@ -4117,6 +4195,17 @@ function addCustomContainer() {
   newBlock.original_html = regenerateBlockHtml(newBlock);
 
   labBlocks.push(newBlock);
+
+  recordChange({
+    event_type: "container_add",
+    target_container_id: newId,
+    new_value: {
+      container_label: label,
+      starter_block_id: newBlock.block_id,
+      starter_title: newBlock.title,
+      starter_level: newBlock.level,
+    },
+  });
 
   labIsRearranged = blocksDifferFromOriginal();
   renderBlockList();
@@ -4145,7 +4234,11 @@ function addBlockToContainer(containerId) {
   }
   if (lastIdx === -1 || !template) return;
 
+  // Mint a stable block_id at creation so this block survives load/save round-trips
+  // and so the block_add event below has a real target. Closes the "load path leaks
+  // null block_id" followup for blocks born inside the Lab.
   const newBlock = {
+    block_id: crypto.randomUUID(),
     title: "New heading",
     body_text: "",
     level: 3,
@@ -4159,6 +4252,18 @@ function addBlockToContainer(containerId) {
   newBlock.original_html = regenerateBlockHtml(newBlock);
 
   labBlocks.splice(lastIdx + 1, 0, newBlock);
+
+  recordChange({
+    event_type: "block_add",
+    target_block_id: newBlock.block_id,
+    target_container_id: containerId,
+    new_value: {
+      title: newBlock.title,
+      body_text: newBlock.body_text,
+      level: newBlock.level,
+      container_id: containerId,
+    },
+  });
 
   labIsRearranged = blocksDifferFromOriginal();
   renderBlockList();
@@ -4224,6 +4329,11 @@ function toggleBlockGhost(blockIndex) {
   const block = labBlocks[blockIndex];
   if (!block) return;
   block.is_ghost = !block.is_ghost;
+  recordChange({
+    event_type: block.is_ghost ? "block_ghost" : "block_unghost",
+    target_block_id: blockStableId(block),
+    target_container_id: block.container_id || null,
+  });
   labIsRearranged = blocksDifferFromOriginal();
   const wipBtn = document.getElementById("btn-score-wip");
   if (wipBtn) wipBtn.disabled = false;
@@ -4344,9 +4454,29 @@ function onDrop(e) {
   const targetSectionId = (targetBlock && targetBlock.section_id) || null;
   if (targetSectionId !== dragSrcSectionId) return;
 
+  // Snapshot the source block's anchor (the block immediately before it in
+  // labBlocks order) BEFORE the splice. Anchor-based position survives
+  // unrelated edits better than a numeric index.
+  const srcBlock = labBlocks[dragSrcIndex];
+  const oldPrevBlockId = dragSrcIndex > 0 ? blockStableId(labBlocks[dragSrcIndex - 1]) : null;
+  const oldContainerId = srcBlock.container_id || null;
+
   // Reorder
   const [moved] = labBlocks.splice(dragSrcIndex, 1);
   labBlocks.splice(targetIndex, 0, moved);
+
+  // Resolve the new anchor post-mutation. The drop logic doesn't reassign
+  // container_id (see swapContainers's "scattered blocks" note), so container
+  // stays the same; only position relative to neighbors changes.
+  const newIdx = labBlocks.indexOf(srcBlock);
+  const newPrevBlockId = newIdx > 0 ? blockStableId(labBlocks[newIdx - 1]) : null;
+  recordChange({
+    event_type: "block_move",
+    target_block_id: blockStableId(srcBlock),
+    target_container_id: srcBlock.container_id || null,
+    old_value: { prev_block_id: oldPrevBlockId, container_id: oldContainerId },
+    new_value: { prev_block_id: newPrevBlockId, container_id: srcBlock.container_id || null },
+  });
 
   // Check if rearranged
   labIsRearranged = blocksDifferFromOriginal();
