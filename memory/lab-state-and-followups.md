@@ -163,7 +163,7 @@ Cluster 1 of the Phase 1 plan + extensive design-pass iteration with Anna. Eight
 
 Verified end-to-end against the PostgREST endpoint (insert + read-back + jsonb round-trip). Existing perms all have `parent_perm_id = NULL` (column was just added); new saves from this point forward chain via the column.
 
-**Session 2 shipped (commit `<TBD>`):** Rest of the event taxonomy (minus `block_delete`, which is waiting on a handler that doesn't exist yet -- Cluster 3 backlog item). Eight new event types wired across seven handlers; one new helper. What landed:
+**Session 2 shipped (commit `c012ad0`):** Rest of the event taxonomy (minus `block_delete`, which is waiting on a handler that doesn't exist yet -- Cluster 3 backlog item). Eight new event types wired across seven handlers; one new helper. What landed:
 
 - `getContainerNeighbors(containerId)` helper in `lab/index.html` (near `recordChange` / `persistChangeLog`). Returns `{before_container_id, after_container_id}` by walking labBlocks and building the ordered list of unique container_ids. Anchor-based, not numeric-index-based -- replays survive unrelated edits that don't touch the target's immediate neighbors.
 - `block_ghost` / `block_unghost` in `toggleBlockGhost`. Single recordChange call, conditional event_type by the post-mutation `block.is_ghost` value.
