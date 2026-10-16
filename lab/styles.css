@@ -56,26 +56,66 @@ body {
 .wrapper { max-width: 1240px; margin: 0 auto; padding: 24px 28px 60px; }
 
 header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 18px;
   margin-bottom: 24px;
 }
-.header-text { min-width: 0; flex: 1; }
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 10px;
+}
+
 header h1 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--text);
 }
-header p {
-  margin: 0;
+
+.header-tagline {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #3b4994; /* deep slate-blue / indigo */
+  letter-spacing: -0.01em;
+}
+
+.header-tagline em {
+  font-style: normal;
+  font-weight: 700;
+}
+
+.header-text {
+  width: 100%;
+}
+
+.header-text p {
+  margin: 0 0 10px;
   color: var(--text-muted);
   font-size: 13px;
+  line-height: 1.55;
+}
+
+.header-text ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.header-text li {
+  margin-bottom: 4px;
+}
+
+.header-text li strong {
+  font-weight: 600;
+  color: var(--text);
 }
 
 /* Tab navigation -- lives inside <header> on the right */
