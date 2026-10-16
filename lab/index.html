@@ -22,7 +22,7 @@
 <header>
   <div class="header-text">
     <h1>Signal Coherence Dashboard</h1>
-    <p>Rearrange page sections, see how entity salience and topical categories shift. NLP via Google Cloud (results cached in Supabase).</p>
+    <p>Rearrange, reword, and/or remove content to see how entity salience and detected topic categories (and their confidences) shift. Use <strong>Page Lab</strong> for more granularity, and use the <strong>NLP Scorer</strong> for 'quick 'n' dirty' scoring.</p>
   </div>
   <div class="tab-nav">
     <button class="tab-btn active" data-tab="tab-lab" onclick="switchTab('tab-lab')">Page Lab</button>
@@ -139,8 +139,6 @@
 <footer>
   Data source: Supabase project <code>signal-coherence</code> (ghzfrxxevjjfgpxvmahy.supabase.co).
   NLP + SQL routed through Supabase Edge Function <code>bridge</code>.
-  Click a page in the table to see latest analysis details.
-  Use the Reload button in the header to refresh.
 </footer>
 </div>
 
