@@ -22,18 +22,19 @@
 <header>
   <div class="header-text">
     <h1>Signal Coherence Lab</h1>
-    <p> See how content changes influence Google's interpretation of the <em>'aboutness'</em>of a page. Test which topics are detected, which entities stand out, and how strongly those signals are associated with the content.
-      <br>Choose between two modes: <strong>Page Analysis - </strong> Analyze and revise a page in CMS-style content blocks. Compare the NLP signals for individual blocks and for the page as a whole. <strong>Quick Scorer - </strong>Paste text or HTML for a fast NLP check. View detected categories and confidence scores, with the option to include entities and salience.</p>
+    <p><strong>See how content changes influence Google's interpretation of the </strong><em>'aboutness'</em> <strong>of a page.</strong></p>
+      <p>Test which topics are detected, which entities stand out, and how strongly those signals are associated with the content. Choose between two modes: 
+        <br><strong>Page Analysis - </strong> Analyze and revise a page in CMS-style content blocks. Compare the NLP signals for individual blocks and for the page as a whole. <br><strong>Quick Scorer - </strong>Paste text or HTML for a fast NLP check. View detected categories and confidence scores, with the option to include entities and salience.</p>
   </div>
   <div class="tab-nav">
-    <button class="tab-btn active" data-tab="tab-lab" onclick="switchTab('tab-lab')">Page Lab</button>
-    <button class="tab-btn" data-tab="tab-scorer" onclick="switchTab('tab-scorer')">NLP Scorer</button>
+    <button class="tab-btn active" data-tab="tab-lab" onclick="switchTab('tab-lab')">Page Analysis</button>
+    <button class="tab-btn" data-tab="tab-scorer" onclick="switchTab('tab-scorer')">Quick Scorer</button>
   </div>
 </header>
 
 <div id="errors"></div>
 
-<!-- ============ TAB: Page Lab ============ -->
+<!-- ============ TAB: Page Analysis ============ -->
 <div id="tab-lab" class="tab-content active">
   <div class="lab-workspace" id="lab-workspace">
     <div class="lab-blocks-panel">
@@ -113,7 +114,7 @@
   </aside>
 </div>
 
-<!-- ============ TAB: NLP Scorer ============ -->
+<!-- ============ TAB: Quick Scorer ============ -->
 <div id="tab-scorer" class="tab-content">
   <div class="nlp-scorer">
     <h3>NLP Classification Scorer</h3>
@@ -483,7 +484,7 @@ function confidenceColor(val) {
 }
 
 // =============================================================================
-// NLP Scorer UI (standalone tab)
+// Quick Scorer UI (standalone tab)
 // =============================================================================
 
 const nlpInput = document.getElementById("nlp-input");
