@@ -6,6 +6,13 @@ This doc exists because the May 14 cleanup session uncovered several spots where
 
 ## Deployment model
 
+**Added Nov 11, 2026 (newest first):**
+- The Lab now has server functions. Commit `fff736c` (branch `bean/quick-scorer-url-fetch`) adds `netlify/functions/`, `netlify/lib/`, a root `package.json` and `netlify.toml`. Netlify therefore runs an install on deploy; the site is no longer purely static. Details and gotchas: `memory/live-url-fetch-and-scroll-gate.md`.
+- `netlify.toml` now pins `publish = "lab"`, replacing the dashboard-only setting described below. Same value, now in the repo.
+- `npm test` runs the only tests in the repo (the fetcher's URL check).
+- The Bean laptop session could not push to GitHub (no stored sign-in); Anna pushes through GitHub Desktop. A scratch Netlify project, `sc-fetch-spike-throwaway`, was used as the preview site for this branch and may since have been deleted.
+
+**Earlier notes:**
 - Netlify site (signal-coherence.netlify.app) is now **git-connected** (Anna wired it up after the May 14 session). Pushes to `main` should auto-deploy. Site ID: `cab32293-702d-4f95-9358-d293c666ff96`.
 - **Publish directory: `lab/`** (discovered May 17). Netlify serves `lab/index.html` at the site root, not `lab/` -- `/` returns it, `/lab/` returns 404. Anything that needs to be served (favicons, manifest, future static assets) must live under `lab/`, not at repo root. Favicons currently exist in both places (`/favicon.ico` and `/lab/favicon.ico`) -- the deploy reads the lab/ copy; the root copies are dead weight unless the publish dir ever changes.
 - If a deploy doesn't fire on push, the git connection has drifted -- fall back to Netlify CLI/MCP deploy from inside `lab/` and reconnect via the Netlify dashboard.

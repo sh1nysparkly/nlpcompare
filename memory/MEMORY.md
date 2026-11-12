@@ -22,6 +22,7 @@
 - [Position×volume null at late position](position-volume-null-late-position.md) -- AMA Travel LPs' whole-page category measurement is determined by ~first half of page. n=11 null tests across 7 LPs; structural property.
 - [Two-layer NLP model](two-layer-nlp-model.md) -- categories driven by position-weighted content; entities driven by mention frequency. Different lever types affect different layers. Confirmed n=5 LPs.
 - [Cross-LP stacking regimes](cross-lp-stacking-regimes.md) -- three compound shapes when stacking within-recipe levers: multiplicative (same-metric), linear-additive (different-layer), under-additive (same-entity-space). Classify levers BEFORE predicting compound outcomes. Confirmed n=3 LPs.
+- [Live URL fetch, scroll gate, three-piece plan](live-url-fetch-and-scroll-gate.md) -- Nov 11 2026. amatravel.ca only builds 2 sections until a real scroll; new template uses `page-section` seams; Quick Scorer URL fetch built (`netlify/`); agreed plan for pulling live pages into Page Analysis and fixing blocks on the page.
 
 ## Reference
 - [signal-coherence/ directory](signal-coherence-directory.md) -- where SEO investigation artifacts live
