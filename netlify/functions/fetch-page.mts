@@ -1,4 +1,5 @@
-// Background job: fetch a live page for the Quick Scorer. The caller gets an
+// Background job: fetch a live page for the Quick Scorer, or (chop: true) chop
+// it into sections and blocks for Page Analysis. The caller gets an
 // immediate 202 and collects the outcome from /api/fetch-result?id=...
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
@@ -17,7 +18,7 @@ export default async (req: Request) => {
   }
   await store.setJSON(id, { status: "running" });
   try {
-    await store.setJSON(id, { status: "done", ...(await fetchPage(url, { clean: body.clean === true })) });
+    await store.setJSON(id, { status: "done", ...(await fetchPage(url, { clean: body.clean === true, chop: body.chop === true })) });
   } catch (err) {
     // Caught on purpose: an uncaught error would make Netlify retry the fetch.
     console.error("fetch-page failed", url, err);

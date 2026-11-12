@@ -5,6 +5,7 @@
 import chromium from "@sparticuz/chromium-min";
 import puppeteer from "puppeteer-core";
 import { cleanPage } from "./clean-page.mjs";
+import { chopPage, markHiddenPanels } from "./chop-page.mjs";
 
 // Must match the @sparticuz/chromium-min version in package.json.
 const CHROMIUM_PACK =
@@ -83,14 +84,17 @@ function openCollapsedPanels() {
   });
 }
 
+// chop: true returns Page Analysis rows (sections and blocks) instead of HTML.
 // clean: true returns the output of the "Clean HTML for NLP" cleaner (with FAQ
 // answers opened first) instead of the default stripped snapshot.
-export async function fetchPage(url, { clean = false } = {}) {
+export async function fetchPage(url, { clean = false, chop = false } = {}) {
+  const local = process.env.LOCAL_CHROME_PATH;
   const browser = await puppeteer.launch({
-    args: await puppeteer.defaultArgs({ args: chromium.args, headless: "shell" }),
+    args: local ? [] : await puppeteer.defaultArgs({ args: chromium.args, headless: "shell" }),
     defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
-    executablePath: await chromium.executablePath(CHROMIUM_PACK),
-    headless: "shell",
+    // LOCAL_CHROME_PATH lets a Bean run the fetcher on a laptop for testing.
+    executablePath: local || await chromium.executablePath(CHROMIUM_PACK),
+    headless: local ? true : "shell",
   });
   try {
     const page = await browser.newPage();
@@ -102,6 +106,21 @@ export async function fetchPage(url, { clean = false } = {}) {
     const reachedBottom = await scrollToBottom(page);
     await settle(page, 3000);
     let html, words;
+    if (chop) {
+      await page.evaluate(markHiddenPanels);
+      await page.evaluate(openCollapsedPanels);
+      await settle(page, 2000);
+      const chopped = await page.evaluate(chopPage);
+      return {
+        url,
+        fetchedAt: new Date().toISOString(),
+        httpStatus: response ? response.status() : null,
+        reachedBottom,
+        chop: true,
+        title: await page.title(),
+        ...chopped,
+      };
+    }
     if (clean) {
       await page.evaluate(openCollapsedPanels);
       html = (await page.evaluate(cleanPage)).html;

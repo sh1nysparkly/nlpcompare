@@ -1759,6 +1759,19 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   color: var(--text);
   min-width: 0;
 }
+.page-picker-row.pull-row { margin-top: 8px; }
+#lab-pull-url {
+  flex: 1;
+  font-family: var(--font-display);
+  font-size: 13px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  min-width: 0;
+}
+#lab-pull-url:focus,
 #lab-page-select:focus {
   outline: none;
   border-color: var(--primary) !important;
@@ -2179,6 +2192,19 @@ body.lab-container-dragging .container-gap-zone.drag-over-gap {
   outline: none;
   border-color: var(--primary);
   background: #fff;
+}
+
+/* Live pulls: block text that's in the HTML but not visible on load. */
+.hidden-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  background: #ede9fe;
+  color: #5b21b6;
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* HTML badge on the block meta line. Same shape as .edited-tag but in a

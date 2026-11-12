@@ -70,9 +70,13 @@
         <h3>Load a page</h3>
         <div class="page-picker-row">
           <select id="lab-page-select">
-            <option value="">-- Select a crawled page --</option>
+            <option value="">-- Select a pulled page --</option>
           </select>
           <button class="btn-tabstyle" onclick="loadSelectedPage()">Load</button>
+        </div>
+        <div class="page-picker-row pull-row">
+          <input type="url" id="lab-pull-url" placeholder="https://www.amatravel.ca/cruises" aria-label="Live page to pull" onkeydown="if (event.key === 'Enter') pullLivePage()">
+          <button class="btn-tabstyle" id="btn-pull-page" onclick="pullLivePage()" title="Opens the live page in a real browser, scrolls it, and chops it into sections and blocks. Takes a minute or two.">Pull live page</button>
         </div>
         <span class="info" id="lab-picker-info"></span>
       </div>
@@ -131,6 +135,7 @@
         <input type="checkbox" id="nlp-fetch-clean" checked> Clean HTML
       </label>
       <button class="btn-tabstyle" id="btn-fetch-page" onclick="fetchPageIntoScorer()">Fetch page</button>
+      <button class="btn-tabstyle" onclick="pullFromScorer()" title="Pull this page into Page Analysis, chopped into sections and blocks.">Open in Page Analysis</button>
     </div>
     <span class="fetch-info" id="nlp-fetch-info"></span>
     <div style="display:flex; gap:16px; align-items:center; margin-bottom:8px; font-size:13px;">
@@ -511,9 +516,32 @@ nlpInput.addEventListener("input", () => {
   wordCountEl.className = "word-count" + (wc < 20 && wc > 0 ? " too-short" : "");
 });
 
-// --- Fetch a live page into the scorer box ---
+// --- Live page fetches ---
 // The fetch runs as a Netlify background function (a real browser that scrolls
 // the page), so this asks for it, then polls /api/fetch-result until it lands.
+// body: { url, clean } for the Quick Scorer, { url, chop: true } for Page Analysis.
+async function runLiveFetch(body) {
+  const id = crypto.randomUUID();
+  const start = await fetch("/api/fetch-page", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: id, ...body }),
+  });
+  if (start.status === 429) throw new Error("Too many fetches in a row. Give it a minute and try again.");
+  if (!start.ok) throw new Error("The fetcher didn't start (" + start.status + ").");
+
+  const deadline = Date.now() + 4 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    const res = await fetch("/api/fetch-result?id=" + id);
+    if (!res.ok) continue;
+    const data = await res.json();
+    if (data.status === "error") throw new Error(data.message);
+    if (data.status === "done") return data;
+  }
+  throw new Error("The fetch took too long and was abandoned.");
+}
+
 async function fetchPageIntoScorer() {
   const info = document.getElementById("nlp-fetch-info");
   const btn = document.getElementById("btn-fetch-page");
@@ -526,26 +554,7 @@ async function fetchPageIntoScorer() {
   btn.disabled = true;
   info.textContent = "Fetching and scrolling the page. This can take a minute or two...";
   try {
-    const id = crypto.randomUUID();
-    const start = await fetch("/api/fetch-page", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: id, url: url, clean: document.getElementById("nlp-fetch-clean").checked }),
-    });
-    if (start.status === 429) throw new Error("Too many fetches in a row. Give it a minute and try again.");
-    if (!start.ok) throw new Error("The fetcher didn't start (" + start.status + ").");
-
-    let page = null;
-    const deadline = Date.now() + 4 * 60 * 1000;
-    while (Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      const res = await fetch("/api/fetch-result?id=" + id);
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.status === "error") throw new Error(data.message);
-      if (data.status === "done") { page = data; break; }
-    }
-    if (!page) throw new Error("The fetch took too long and was abandoned.");
+    const page = await runLiveFetch({ url: url, clean: document.getElementById("nlp-fetch-clean").checked });
     if (page.words < 20) {
       throw new Error("The page came back with only " + page.words + " words, so the box was left alone.");
     }
@@ -1503,7 +1512,13 @@ async function loadBlocksFromCuration(slug) {
   }
   const rows = await resp.json();
   if (!rows || rows.length === 0) return [];
+  return curationRowsToBlocks(rows, "v12-curation");
+}
 
+// Turns lp_blocks-shaped rows into Lab blocks. Used for the hand curation and
+// for live pulls (whose rows also carry a `hidden` flag: in the HTML but not
+// visible when the page loads).
+function curationRowsToBlocks(rows, sourceTag) {
   // Group rows by container_label (encounter order) then by block_id (encounter order).
   // Maps preserve insertion order in modern JS engines.
   const byContainer = new Map();
@@ -1525,7 +1540,7 @@ async function loadBlocksFromCuration(slug) {
     const n = (labelCounts[baseLabel] || 0) + 1;
     labelCounts[baseLabel] = n;
     const containerLabel = (n > 1) ? (baseLabel + " (cont. " + n + ")") : baseLabel;
-    const labelSource = "v12-curation" + (n > 1 ? "+dedupe" : "");
+    const labelSource = sourceTag + (n > 1 ? "+dedupe" : "");
 
     // External-widget detection: any row in the container with What='Widget' (TST
     // booking widget rows) flags the container. UI uses this for greyed/locked
@@ -1609,8 +1624,12 @@ async function loadBlocksFromCuration(slug) {
         move_cut: r.move_cut,
         notes: r.notes,
       }));
+      // Live pulls: "all" = nothing in this block shows on load, "some" = part of it.
+      const hiddenCount = blockRows.filter(r => r.hidden).length;
+      const hiddenOnPage = hiddenCount === 0 ? null : (hiddenCount === blockRows.length ? "all" : "some");
       flatBlocks.push({
         kind: "curated",
+        hidden_on_page: hiddenOnPage,
         level: Number.isFinite(level) ? level : 0,
         title: title,
         body_text: body_text,
@@ -1964,33 +1983,91 @@ async function loadLabPageList() {
   info.textContent = "Loading page list...";
 
   try {
-    // Only show pages that actually have curated content in lp_blocks. Drops the
-    // CSR-empty placeholder pages (e.g. /vacation-packages/tours,
-    // /travel-insurance/car-rental-insurance) and auto-corrects forever: any LP
-    // whose curation lands later just appears, any LP without curation disappears.
-    const rows = await sql("SELECT cp.slug, cp.url, cp.source, cp.crawl_date, cp.template_type, length(cp.raw_html) as html_chars FROM crawled_pages cp WHERE cp.template_type IS NOT NULL AND EXISTS (SELECT 1 FROM lp_blocks lb WHERE lb.slug = cp.slug) ORDER BY cp.slug");
+    // Only live pulls are listed. The May 2026 curated pages (crawled_pages +
+    // lp_blocks) are retired from the picker but kept in Supabase untouched
+    // (Anna, Nov 12 2026: old-template pages "will just confuse people").
+    const rows = await postgrest("/live_pulls?select=id,url,title,pulled_at&order=pulled_at.desc");
     if (!rows || rows.length === 0) {
-      info.textContent = "No template-tagged pages found. Assign template_type to crawled_pages rows to make them available here.";
+      sel.innerHTML = '<option value="">-- No pulled pages yet --</option>';
+      info.textContent = "Pull a live page below to get started.";
+      labPageListLoaded = true;
       return;
     }
 
-    // Clear existing options except placeholder
-    sel.innerHTML = '<option value="">-- Select a page (' + rows.length + ' available) --</option>';
+    sel.innerHTML = '<option value="">-- Select a pulled page (' + rows.length + ') --</option>';
     rows.forEach(r => {
       const opt = document.createElement("option");
-      opt.value = r.slug;
-      opt.dataset.templateType = r.template_type || "";
-      const kb = Math.round((r.html_chars || 0) / 1024);
-      opt.textContent = r.slug + " (" + kb + " KB, " + r.template_type + ")";
+      opt.value = "pull:" + r.id;
+      opt.textContent = pullDisplayName(r);
       sel.appendChild(opt);
     });
 
-    info.textContent = rows.length + " pages available.";
+    info.textContent = "";
     labPageListLoaded = true;
   } catch (e) {
     info.textContent = "Error loading page list: " + e.message;
     console.error("loadLabPageList error:", e);
   }
+}
+
+function pullDisplayName(pull) {
+  let path = pull.url;
+  try { const u = new URL(pull.url); path = u.hostname.replace(/^www\./, "") + (u.pathname === "/" ? "" : u.pathname); } catch (e) {}
+  const when = new Date(pull.pulled_at).toLocaleString("en-CA", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  return path + " \u00b7 " + when;
+}
+
+// Pull a live page into Page Analysis: fetch + chop in a real browser, save the
+// rows as a new dated live_pulls row (never overwrites anything), then load it.
+let labPullPatternKeys = {}; // live pulls: { chop container key ("c3"): pattern_key }
+async function pullLivePage() {
+  const info = document.getElementById("lab-picker-info");
+  const btn = document.getElementById("btn-pull-page");
+  const url = document.getElementById("lab-pull-url").value.trim();
+  if (!/^https:\/\/\S+\.\S+/i.test(url)) {
+    info.textContent = "Enter a full address starting with https://";
+    return;
+  }
+  btn.disabled = true;
+  info.textContent = "Pulling and chopping the live page. This can take a minute or two...";
+  try {
+    const page = await runLiveFetch({ url: url, chop: true });
+    if (!page.rows || page.rows.length < 3) {
+      throw new Error("The page came back with almost no text (" + (page.rows || []).length + " rows), so nothing was saved.");
+    }
+    const inserted = await postgrest("/live_pulls", {
+      method: "POST",
+      body: {
+        url: page.url,
+        title: page.title || null,
+        pulled_at: page.fetchedAt,
+        seam: page.seam,
+        reached_bottom: page.reachedBottom,
+        rows: page.rows,
+      },
+    });
+    const pull = inserted && inserted[0];
+    if (!pull) throw new Error("The pull worked but saving it failed.");
+    labPageListLoaded = false;
+    await loadLabPageList();
+    document.getElementById("lab-page-select").value = "pull:" + pull.id;
+    await loadSelectedPage();
+    if (!page.reachedBottom) {
+      info.textContent = "Scrolling stopped before the end, so the bottom of the page may be missing.";
+    }
+  } catch (e) {
+    info.textContent = e.message;
+    console.error("pullLivePage error:", e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function pullFromScorer() {
+  const url = document.getElementById("nlp-fetch-url").value.trim();
+  document.getElementById("lab-pull-url").value = url;
+  switchTab("tab-lab");
+  pullLivePage();
 }
 
 async function loadRecipeSlots(templateType) {
@@ -2028,6 +2105,23 @@ async function loadSelectedPage() {
   info.textContent = "Loading " + slug + "...";
 
   try {
+    let blocks, blockSource;
+    if (slug.startsWith("pull:")) {
+      // Live pull: rows come from live_pulls; versions hang off "pull:<id>".
+      const pulls = await postgrest("/live_pulls?id=eq." + encodeURIComponent(slug.slice(5)) + "&select=*");
+      const pull = pulls && pulls[0];
+      if (!pull) { info.textContent = "That pull wasn't found."; return; }
+      labCrawlDate = String(pull.pulled_at).slice(0, 10);
+      labSource = "live-pull";
+      labTemplateType = null;
+      labPullPatternKeys = pull.pattern_keys || {};
+      const rows = (pull.rows || []).map(r => ({
+        ...r,
+        pattern_key: labPullPatternKeys[String(r.block_id).split("-")[0]] || null,
+      }));
+      blocks = curationRowsToBlocks(rows, "live-pull");
+      blockSource = "live-pull";
+    } else {
     const rows = await sql("SELECT raw_html, crawl_date, source FROM crawled_pages WHERE slug = '" + slug.replace(/'/g, "''") + "' LIMIT 1");
     if (!rows || rows.length === 0) {
       info.textContent = "Page not found in database.";
@@ -2046,16 +2140,17 @@ async function loadSelectedPage() {
     // Primary path: pull v12 hand-curated rows from public.lp_blocks. The HTML
     // parser (walkBlocks etc.) remains in place as a deprecated fallback for
     // any slug that isn't curated yet. See loadBlocksFromCuration above.
-    let blocks = await loadBlocksFromCuration(slug);
-    let blockSource = "curation";
+    blocks = await loadBlocksFromCuration(slug);
+    blockSource = "curation";
     if (!blocks || blocks.length === 0) {
       console.warn("No curation rows for", slug, "-- falling back to HTML parser");
       const mainContent = extractMainContent(html);
       blocks = walkBlocks(mainContent);
       blockSource = "html-parser-fallback";
     }
+    }
 
-    if (blocks.length === 0) {
+    if (!blocks || blocks.length === 0) {
       info.textContent = "Loaded HTML but no content blocks found after parsing. The page may have unusual structure.";
       return;
     }
@@ -2089,7 +2184,8 @@ async function loadSelectedPage() {
     const totalWords = blocks.reduce((s, b) => s + b.word_count, 0);
     const slotCount = labRecipeSlots.length;
     const slotInfo = slotCount > 0 ? ", " + slotCount + " recipe slots ready" : "";
-    const sourceLabel = blockSource === "curation" ? " (curation v12)" : " (HTML-parser fallback)";
+    const sourceLabel = blockSource === "curation" ? " (curation v12)"
+      : blockSource === "live-pull" ? " (live pull)" : " (HTML-parser fallback)";
     // Verbose "Loaded X blocks, Y words, Z recipe slots" lived under the page
     // picker and Anna never used it -- silence it. Errors below still set
     // info.textContent so loading/error states stay visible.
@@ -2359,6 +2455,12 @@ function renderBlockList() {
                title="${isCodeView ? 'Hide HTML source view' : (isHtmlAuthored ? 'This block is HTML-authored. Click to view/edit the HTML.' : 'Show HTML source view (edit raw HTML sent to NLP)')}"
                aria-label="Toggle code view">&lt;/&gt;</button>`;
 
+    // Live pulls: text that's in the page's HTML but not visible on load
+    // (collapsed FAQ answers, off-screen carousel cards). It's still scored.
+    const hiddenBadge = block.hidden_on_page
+      ? ' &middot; <span class="hidden-tag" title="In the page\'s HTML but not visible when the page loads (a collapsed FAQ answer or an off-screen carousel card). It is still sent to the NLP API.">'
+        + (block.hidden_on_page === "all" ? "hidden on page" : "partly hidden") + '</span>'
+      : '';
     const htmlBadge = isHtmlAuthored
       ? ' &middot; <span class="html-authored-tag" title="Body is authored HTML. The NLP API receives this HTML verbatim.">HTML</span>'
       : '';
@@ -2381,7 +2483,7 @@ function renderBlockList() {
                   onkeydown="onEditableKeydown(event)">${highlightEntitiesInHtml(escapeHtml(block.title), topEntities)}</span>
           </div>
           ${bodyHtml}
-          <div class="block-meta">${block.word_count} words${headingMeta}${isEdited ? ' &middot; <span class="edited-tag">edited</span>' : ''}${htmlBadge}${blockGhost ? ' &middot; <span class="ghost-tag">ghosted</span>' : ''}</div>
+          <div class="block-meta">${block.word_count} words${headingMeta}${isEdited ? ' &middot; <span class="edited-tag">edited</span>' : ''}${htmlBadge}${blockGhost ? ' &middot; <span class="ghost-tag">ghosted</span>' : ''}${hiddenBadge}</div>
         </div>
         ${codeBtn}
         ${ghostBtn}
@@ -2755,6 +2857,27 @@ async function onContainerPatternChange(e) {
 
   if (!blockIds.size) {
     showToast("Pattern set (no curated rows to persist)");
+    return;
+  }
+  // Live pulls keep pattern keys on their live_pulls row, keyed by the chop's
+  // container ("c3" from block id "c3-k0"). The curated lp_blocks are never touched.
+  if (labSlug.startsWith("pull:")) {
+    for (const bid of blockIds) {
+      const key = String(bid).split("-")[0];
+      if (newPatternKey) labPullPatternKeys[key] = newPatternKey;
+      else delete labPullPatternKeys[key];
+    }
+    try {
+      await postgrest("/live_pulls?id=eq." + encodeURIComponent(labSlug.slice(5)), {
+        method: "PATCH",
+        prefer: "return=minimal",
+        body: { pattern_keys: labPullPatternKeys },
+      });
+      showToast("Pattern saved: " + (getPatternByKey(newPatternKey)?.name || "(cleared)"));
+    } catch (err) {
+      showToast("Save failed: " + err.message, 5000);
+      console.error("Pattern persist failed:", err);
+    }
     return;
   }
   // PATCH lp_blocks.pattern_key for the rows in this container. Filter by slug
@@ -5360,6 +5483,7 @@ function slimBlockForSnapshot(b) {
     block_id: b.block_id || null,
     curation_block_id: b.curation_block_id || null,
     pattern_key: b.pattern_key || null,
+    hidden_on_page: b.hidden_on_page || null,
     original_html: b.original_html || "",
   };
   if (b.html_authored && b.body_html) slim.body_html = b.body_html;
