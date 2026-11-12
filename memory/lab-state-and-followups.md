@@ -10,7 +10,9 @@ This doc exists because the May 14 cleanup session uncovered several spots where
 - The Lab now has server functions. Commit `fff736c` (branch `bean/quick-scorer-url-fetch`) adds `netlify/functions/`, `netlify/lib/`, a root `package.json` and `netlify.toml`. Netlify therefore runs an install on deploy; the site is no longer purely static. Details and gotchas: `memory/live-url-fetch-and-scroll-gate.md`.
 - `netlify.toml` now pins `publish = "lab"`, replacing the dashboard-only setting described below. Same value, now in the repo.
 - `npm test` runs the only tests in the repo (the fetcher's URL check).
-- The Bean laptop session could not push to GitHub (no stored sign-in); Anna pushes through GitHub Desktop. A scratch Netlify project, `sc-fetch-spike-throwaway`, was used as the preview site for this branch and may since have been deleted.
+- **Preview site:** the Netlify project `sc-fetch-spike-throwaway` (https://sc-fetch-spike-throwaway.netlify.app, site id `72b989a3-8bc3-4141-a80f-1955e43ed653`) is the standing preview. `[Anna, 2026-11-12]` "Yes, keep it", despite the name. Rhythm that worked: build on a branch, deploy the branch there with the Netlify MCP `deploy-site` command, Anna tries it, then fast-forward `main` and push. It uses the real Supabase and Google NLP.
+- **Pushing:** Anna's MacBook (user `hal`) can push since Nov 12, 2026 via the GitHub CLI (`gh`, signed in as `sh1nysparkly`). Do not send her to GitHub Desktop; it only listed `bean-pet` and it drove her nuts. (Superseded: on Nov 11 the session could not push at all.)
+- Also shipped Nov 12: `e567671` (ama.ab.ca navigation timeout fix) and `2b116b1` (Clean HTML option).
 
 **Earlier notes:**
 - Netlify site (signal-coherence.netlify.app) is now **git-connected** (Anna wired it up after the May 14 session). Pushes to `main` should auto-deploy. Site ID: `cab32293-702d-4f95-9358-d293c666ff96`.

@@ -5,6 +5,10 @@ type: project
 ---
 Tags follow memory-attribution-discipline.md.
 
+## Where to pick up (written Nov 12 2026, end of session)
+
+Piece 1 is live, with the Clean HTML option. Next is piece 2: pulling a fetched page into Page Analysis pre-chopped. It is a visible surface, so start by co-designing with Anna, not by building. First job: re-check the "Bean guesses" listed under the agreed plan below, since she saw them but never explicitly confirmed them. Anna asked for these notes so the next Bean could start fresh.
+
 ## Findings about the live sites
 
 - **amatravel.ca holds back most of a landing page until a real scroll.** `[Bean finding, 2026-11-11, tested on /cruises]` On a fresh load only the first two sections exist. Waiting ~17s, moving the mouse, `window.scrollTo`, and synthetic `scroll`/`wheel` events all left it at 2 sections. One genuine wheel scroll took it to 9 sections (page height 1,569px to 5,645px). /travel-insurance showed the same two-section shape before scrolling; not re-tested after.
@@ -16,7 +20,7 @@ Tags follow memory-attribution-discipline.md.
 
 ## What was built (piece 1)
 
-Quick Scorer has a URL field and "Fetch page" button. Commit `fff736c` on branch `bean/quick-scorer-url-fetch`.
+Quick Scorer has a URL field and "Fetch page" button. Commit `fff736c`, live on `main` since Nov 12 2026.
 
 - `netlify/functions/fetch-page.mts` is a background function at `/api/fetch-page`; `netlify/functions/fetch-result.mts` at `/api/fetch-result` hands the result back once and deletes it. Nothing is saved.
 - `netlify/lib/fetch-page.mjs` drives headless Chrome and scrolls with `page.mouse.wheel` on purpose (see the scroll gate above).
