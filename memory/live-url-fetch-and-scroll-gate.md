@@ -62,4 +62,10 @@ Confirmed by Anna on 2026-11-12 ("those all feel right!"), including the live-vs
 
 Live pulls stay apart from the GSC-faithful baselines `[Anna confirmed 2026-11-12]`: a live pull is what a visitor's browser sees, not what Google rendered, so it should not be mixed with the GSC-faithful baselines.
 
+Piece 2 decisions `[Anna, 2026-11-12]`:
+- The curated May pages leave the Page Analysis picker ("they'll just confuse people"). Hide them, delete nothing: Anna floated keeping a few full variation runs in Supabase for historical before/afters, undecided. `[hide-not-delete = Bean call]`
+- A validated pull becomes V0 for that pull; later tweaks are V1+. Comparisons work as they do today.
+- Defaults Anna accepted: pull from a URL box under "Load a page" plus "Open in Page Analysis" after a Quick Scorer fetch; section label = first heading, else component tag; hidden content comes in as blocks with a "hidden on page" badge until piece 3's tray; pulls in their own table, never `lp_blocks`.
+- Plumbing consequence `[Bean finding]`: `permutations` are keyed by `slug`, so a new /cruises pull would inherit the old /cruises V1+. Each pull needs its own key. The container-pattern dropdown PATCHes `lp_blocks.pattern_key` and must write to the pull's storage instead.
+
 Pieces 2 and 3 are visible surfaces. co-design-surfaces-with-anna.md applies in full.
