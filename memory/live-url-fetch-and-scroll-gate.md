@@ -54,12 +54,12 @@ Settled with Anna:
 - "Folds" means the CMS section blocks.
 - Her plan B (select chunks and group them) is curation done in the app; the Lab-reads-curation rule in lab-fidelity-mission-critical.md stays intact.
 
-Bean guesses shown to Anna and not objected to, but not explicitly confirmed. Re-check before building on them:
+Confirmed by Anna on 2026-11-12 ("those all feel right!"), including the live-vs-Google separation below:
 - Block grain should follow her existing curation: a whole card is one block, a heading with its tabs is one block, each value prop is one block.
 - A pull is saved as a new dated copy and never overwrites the curated pages.
 - Collapsed FAQ answers and off-screen carousel cards come in; header and footer stay out of Page Analysis.
 - The page picture is a screenshot taken at fetch time with box positions saved beside it (plumbing call).
 
-Raised and not yet reacted to: a live pull is what a visitor's browser sees, not what Google rendered, so it should not be mixed with the GSC-faithful baselines.
+Live pulls stay apart from the GSC-faithful baselines `[Anna confirmed 2026-11-12]`: a live pull is what a visitor's browser sees, not what Google rendered, so it should not be mixed with the GSC-faithful baselines.
 
 Pieces 2 and 3 are visible surfaces. co-design-surfaces-with-anna.md applies in full.
