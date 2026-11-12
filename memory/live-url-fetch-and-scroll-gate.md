@@ -27,6 +27,7 @@ Gotchas that cost time:
 - Full `@sparticuz/chromium` (~70 MB) is too big to bundle; `-min` downloads the pack at cold start. `puppeteer-core` is pinned to the release matching Chromium 153. Bump both together, plus the pack URL.
 - `config.rateLimit` with an extra `action` key deployed fine and was silently not enforced. The working shape is `{ windowLimit, windowSize, aggregateBy }`. Enforcement lags about 10s, so test with a burst, a pause, then more.
 - Measured on a cold start: about a minute for /cruises, about 90s for the ama.ab.ca homepage.
+- `[Bean finding, 2026-11-12, measured]` ama.ab.ca is slow to build in the Netlify browser: about 23s to DOMContentLoaded and 27-28s for `page.goto` to return, against about 2s for amatravel.ca. The original 30s navigation limit therefore failed roughly half the time on ama.ab.ca (Anna hit it on `https://www.ama.ab.ca/about`). The `www` redirect was a red herring; it resolves in under a second. Limit raised to 90s. Why ama.ab.ca is that slow there was not investigated.
 
 ## The agreed plan for the bigger feature
 

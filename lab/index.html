@@ -521,7 +521,7 @@ async function fetchPageIntoScorer() {
   }
 
   btn.disabled = true;
-  info.textContent = "Fetching and scrolling the page. This takes about a minute...";
+  info.textContent = "Fetching and scrolling the page. This can take a minute or two...";
   try {
     const id = crypto.randomUUID();
     const start = await fetch("/api/fetch-page", {

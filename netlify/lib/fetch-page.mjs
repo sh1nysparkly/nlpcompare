@@ -69,7 +69,9 @@ export async function fetchPage(url) {
   try {
     const page = await browser.newPage();
     await page.setUserAgent(USER_AGENT);
-    const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    // Generous on purpose: ama.ab.ca needs ~23s to reach DOMContentLoaded in this
+    // browser (amatravel.ca needs ~2s), so a 30s limit failed about half the time.
+    const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
     await settle(page, SETTLE_MAX_MS);
     const reachedBottom = await scrollToBottom(page);
     await settle(page, 3000);
