@@ -1,0 +1,14 @@
+{
+  "name": "signal-coherence-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"netlify/lib/*.test.mjs\""
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.9",
+    "@netlify/functions": "^6.1.1",
+    "@sparticuz/chromium-min": "153.0.0",
+    "puppeteer-core": "25.11.0"
+  }
+}

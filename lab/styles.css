@@ -338,6 +338,36 @@ table.cat-table td.num { font-variant-numeric: tabular-nums; text-align: right; 
   color: #888;
   line-height: 1.5;
 }
+/* Fetch-a-URL row: mirrors the Page Analysis picker (#lab-page-select + Load). */
+.nlp-scorer .fetch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.nlp-scorer #nlp-fetch-url {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 13px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+}
+.nlp-scorer #nlp-fetch-url:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.nlp-scorer .fetch-info {
+  display: block;
+  margin: 8px 0 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  min-height: 1em;
+}
 .nlp-scorer textarea {
   width: 100%;
   min-height: 120px;

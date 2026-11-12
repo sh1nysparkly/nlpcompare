@@ -125,6 +125,11 @@
   <div class="nlp-scorer">
     <h3>NLP Classification Scorer</h3>
     <p class="subtitle">Paste plain text or rendered HTML and score it with Google's NLP API. Use HTML mode when you want Google to do its own boilerplate detection on a real page; use text mode for cleaned copy or quick experiments.</p>
+    <div class="fetch-row">
+      <input type="url" id="nlp-fetch-url" placeholder="https://www.amatravel.ca/cruises" aria-label="Page URL to fetch" onkeydown="if (event.key === 'Enter') fetchPageIntoScorer()">
+      <button class="btn-tabstyle" id="btn-fetch-page" onclick="fetchPageIntoScorer()">Fetch page</button>
+    </div>
+    <span class="fetch-info" id="nlp-fetch-info"></span>
     <div style="display:flex; gap:16px; align-items:center; margin-bottom:8px; font-size:13px;">
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
         <input type="radio" name="nlp-input-mode" value="PLAIN_TEXT" checked> Plain text
@@ -502,6 +507,59 @@ nlpInput.addEventListener("input", () => {
   wordCountEl.textContent = wc + " word" + (wc !== 1 ? "s" : "");
   wordCountEl.className = "word-count" + (wc < 20 && wc > 0 ? " too-short" : "");
 });
+
+// --- Fetch a live page into the scorer box ---
+// The fetch runs as a Netlify background function (a real browser that scrolls
+// the page), so this asks for it, then polls /api/fetch-result until it lands.
+async function fetchPageIntoScorer() {
+  const info = document.getElementById("nlp-fetch-info");
+  const btn = document.getElementById("btn-fetch-page");
+  const url = document.getElementById("nlp-fetch-url").value.trim();
+  if (!/^https:\/\/\S+\.\S+/i.test(url)) {
+    info.textContent = "Enter a full address starting with https://";
+    return;
+  }
+
+  btn.disabled = true;
+  info.textContent = "Fetching and scrolling the page. This takes about a minute...";
+  try {
+    const id = crypto.randomUUID();
+    const start = await fetch("/api/fetch-page", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: id, url: url }),
+    });
+    if (start.status === 429) throw new Error("Too many fetches in a row. Give it a minute and try again.");
+    if (!start.ok) throw new Error("The fetcher didn't start (" + start.status + ").");
+
+    let page = null;
+    const deadline = Date.now() + 4 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      const res = await fetch("/api/fetch-result?id=" + id);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.status === "error") throw new Error(data.message);
+      if (data.status === "done") { page = data; break; }
+    }
+    if (!page) throw new Error("The fetch took too long and was abandoned.");
+    if (page.words < 20) {
+      throw new Error("The page came back with only " + page.words + " visible words, so the box was left alone.");
+    }
+
+    nlpInput.value = page.html;
+    document.querySelector('input[name="nlp-input-mode"][value="HTML"]').checked = true;
+    nlpInput.dispatchEvent(new Event("input"));
+    info.textContent = "Fetched " + page.url + ": " + page.words.toLocaleString() + " visible words, "
+      + Math.round(page.html.length / 1024) + " KB of HTML."
+      + (page.reachedBottom ? "" : " Scrolling stopped before the end, so the bottom of the page may be missing.");
+  } catch (e) {
+    info.textContent = e.message;
+    console.error("fetchPageIntoScorer error:", e);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 async function runClassification() {
   const text = nlpInput.value.trim();

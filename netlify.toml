@@ -1,0 +1,6 @@
+[build]
+  publish = "lab"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["@sparticuz/chromium-min", "puppeteer-core"]
