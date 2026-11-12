@@ -5,7 +5,27 @@ type: project
 ---
 Tags follow memory-attribution-discipline.md.
 
-## Where to pick up (written Nov 12 2026, end of session)
+## Where to pick up (updated Nov 12 2026, piece 2 session)
+
+Piece 2 is built on branch `claude/piece2-pull-into-page-analysis` and deployed to the preview site (sc-fetch-spike-throwaway). NOT on main yet: Anna tries it on the preview first, then fast-forward main and push. Piece 3 (fix-up on a picture of the page, tray per section) is next after that, and needs co-design first.
+
+## What was built (piece 2, Nov 12 2026)
+
+- `netlify/lib/chop-page.mjs`: `markHiddenPanels()` runs before accordions open (tags what was hidden at load with `data-sc-hidden`), then `chopPage()` turns the scrolled page into lp_blocks-shaped rows `{row_order, block_id, container_label, tag, text, hidden, component_type, what}`. Both self-contained (page.evaluate).
+  - Sections: top-level `page-section`; fallbacks are top-level `section`, then main's children. ama.ab.ca/about came out as ONE section (no CMS seams there). `[Bean finding]`
+  - Blocks: a "card" is the outermost repeated sibling (same tag, or tag+classes minus ng-/active/etc.) that holds text, skipping texty tags, tab strips and Bootstrap `col-*`/`row` (FAQ columns were being taken as cards). TST widget = one block (`what: "Widget"`, so the container gets the external-widget flag like the curation). Other text flows: each heading starts a block, so heading + tabs stay together.
+  - `hidden`: tagged at load, off-screen horizontally, or visibility/opacity hidden. display:none text is dropped entirely.
+  - Measured on /cruises: 9 sections, 112 blocks, 73 flagged hidden (most are the 57-card deal carousel). /travel-insurance: 11 sections; its comparison table comes out as one block per cell, which is a piece-3 fix-up job.
+- `fetchPage(url, { chop: true })`; `/api/fetch-page` accepts `chop`. `LOCAL_CHROME_PATH` env runs the fetcher with laptop Chrome (plain headless) for testing.
+- Supabase `live_pulls` (migration in `supabase/migrations/`). Every pull is a new row. Versions live in `permutations` under slug `pull:<id>`, so old /cruises versions never show up. Pattern keys for pulls go in `live_pulls.pattern_keys` keyed by chop container (`c3`); `lp_blocks` is never written.
+- Lab: the page picker lists live pulls only (curated May pages retired from the picker, data untouched). "Pull live page" box under Load a page; "Open in Page Analysis" beside Fetch page in the Quick Scorer. `loadBlocksFromCuration` is split so `curationRowsToBlocks(rows, sourceTag)` serves both. Blocks carry `hidden_on_page` ("all" / "some"), shown as a purple badge and kept in snapshots.
+- Validate-then-lock uses the existing Commit with one picker empty → overwrite V0 (`commitOverwriteV0`). Verified on the preview: V0 saved under `pull:<id>`, reloads with badges intact; test V0 row then deleted.
+
+Gotchas:
+- Deploying from a git worktree fails ("not a git repository ... worktrees"). Deploy a `git archive` export with its own `git init` instead.
+- `npm install` creates a package-lock.json; main has none, so it was left out on purpose.
+
+## Previous pickup note (Nov 12 2026, end of piece-1 session)
 
 Piece 1 is live, with the Clean HTML option. Next is piece 2: pulling a fetched page into Page Analysis pre-chopped. It is a visible surface, so start by co-designing with Anna, not by building. First job: re-check the "Bean guesses" listed under the agreed plan below, since she saw them but never explicitly confirmed them. Anna asked for these notes so the next Bean could start fresh.
 
