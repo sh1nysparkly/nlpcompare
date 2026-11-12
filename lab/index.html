@@ -127,6 +127,9 @@
     <p class="subtitle">Paste plain text or rendered HTML and score it with Google's NLP API. Use HTML mode when you want Google to do its own boilerplate detection on a real page; use text mode for cleaned copy or quick experiments.</p>
     <div class="fetch-row">
       <input type="url" id="nlp-fetch-url" placeholder="https://www.amatravel.ca/cruises" aria-label="Page URL to fetch" onkeydown="if (event.key === 'Enter') fetchPageIntoScorer()">
+      <label class="fetch-clean" title="Runs the Clean HTML for NLP cleaner: drops attributes, icons, images, nav and footer. FAQ answers are kept. Untick for the page as built.">
+        <input type="checkbox" id="nlp-fetch-clean" checked> Clean HTML
+      </label>
       <button class="btn-tabstyle" id="btn-fetch-page" onclick="fetchPageIntoScorer()">Fetch page</button>
     </div>
     <span class="fetch-info" id="nlp-fetch-info"></span>
@@ -527,7 +530,7 @@ async function fetchPageIntoScorer() {
     const start = await fetch("/api/fetch-page", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: id, url: url }),
+      body: JSON.stringify({ id: id, url: url, clean: document.getElementById("nlp-fetch-clean").checked }),
     });
     if (start.status === 429) throw new Error("Too many fetches in a row. Give it a minute and try again.");
     if (!start.ok) throw new Error("The fetcher didn't start (" + start.status + ").");
@@ -544,13 +547,14 @@ async function fetchPageIntoScorer() {
     }
     if (!page) throw new Error("The fetch took too long and was abandoned.");
     if (page.words < 20) {
-      throw new Error("The page came back with only " + page.words + " visible words, so the box was left alone.");
+      throw new Error("The page came back with only " + page.words + " words, so the box was left alone.");
     }
 
     nlpInput.value = page.html;
     document.querySelector('input[name="nlp-input-mode"][value="HTML"]').checked = true;
     nlpInput.dispatchEvent(new Event("input"));
-    info.textContent = "Fetched " + page.url + ": " + page.words.toLocaleString() + " visible words, "
+    info.textContent = "Fetched " + page.url + (page.clean ? " (cleaned): " : ": ")
+      + page.words.toLocaleString() + (page.clean ? " words, " : " visible words, ")
       + Math.round(page.html.length / 1024) + " KB of HTML."
       + (page.reachedBottom ? "" : " Scrolling stopped before the end, so the bottom of the page may be missing.");
   } catch (e) {

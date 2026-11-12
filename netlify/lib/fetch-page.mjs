@@ -4,6 +4,7 @@
 // synthetic events are ignored), so page.mouse.wheel is used on purpose.
 import chromium from "@sparticuz/chromium-min";
 import puppeteer from "puppeteer-core";
+import { cleanPage } from "./clean-page.mjs";
 
 // Must match the @sparticuz/chromium-min version in package.json.
 const CHROMIUM_PACK =
@@ -45,10 +46,16 @@ async function scrollToBottom(page) {
   return atBottom >= 3;
 }
 
-// Runs inside the page. Strips what carries no visible text (scripts, styles,
-// icons, comments, inline image data) and leaves everything else as built.
-function snapshot() {
-  const words = (document.body.innerText || "").trim().split(/\s+/).filter(Boolean).length;
+// The three helpers below run inside the page (page.evaluate), so each must be
+// self-contained.
+
+function visibleWordCount() {
+  return (document.body.innerText || "").trim().split(/\s+/).filter(Boolean).length;
+}
+
+// The default, uncleaned snapshot: strips what carries no visible text (scripts,
+// styles, icons, comments, inline image data) and leaves everything else as built.
+function strippedHtml() {
   const doc = document.documentElement.cloneNode(true);
   doc.querySelectorAll("script, style, svg, noscript, template, iframe, link").forEach((el) => el.remove());
   doc.querySelectorAll('[src^="data:"]').forEach((el) => el.removeAttribute("src"));
@@ -56,10 +63,29 @@ function snapshot() {
   const comments = [];
   while (walker.nextNode()) comments.push(walker.currentNode);
   comments.forEach((c) => c.remove());
-  return { title: document.title, words, html: "<!doctype html>\n" + doc.outerHTML };
+  return "<!doctype html>\n" + doc.outerHTML;
 }
 
-export async function fetchPage(url) {
+// Opens collapsed accordion panels (FAQ answers) so the cleaner, which skips
+// hidden elements, keeps them. Anna's curation counts FAQ answers. Limited to
+// accordion-style panels and <details>, so menus and dropdowns stay closed.
+function openCollapsedPanels() {
+  document.querySelectorAll("details:not([open])").forEach((el) => { el.open = true; });
+  document.querySelectorAll('[aria-expanded="false"][aria-controls]').forEach((toggle) => {
+    const panel = document.getElementById(toggle.getAttribute("aria-controls"));
+    if (!panel) return;
+    const cls = typeof panel.className === "string" ? panel.className : "";
+    if (panel.getAttribute("role") !== "region" && !/accordion|collapse|faq/i.test(cls)) return;
+    panel.hidden = false;
+    panel.removeAttribute("aria-hidden");
+    panel.classList.add("show");
+    panel.style.display = "block";
+  });
+}
+
+// clean: true returns the output of the "Clean HTML for NLP" cleaner (with FAQ
+// answers opened first) instead of the default stripped snapshot.
+export async function fetchPage(url, { clean = false } = {}) {
   const browser = await puppeteer.launch({
     args: await puppeteer.defaultArgs({ args: chromium.args, headless: "shell" }),
     defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
@@ -75,13 +101,24 @@ export async function fetchPage(url) {
     await settle(page, SETTLE_MAX_MS);
     const reachedBottom = await scrollToBottom(page);
     await settle(page, 3000);
-    const snap = await page.evaluate(snapshot);
+    let html, words;
+    if (clean) {
+      await page.evaluate(openCollapsedPanels);
+      html = (await page.evaluate(cleanPage)).html;
+      const text = html.replace(/<head>[\s\S]*?<\/head>/, " ").replace(/<[^>]+>/g, " ");
+      words = text.trim().split(/\s+/).filter(Boolean).length;
+    } else {
+      html = await page.evaluate(strippedHtml);
+      words = await page.evaluate(visibleWordCount);
+    }
     return {
       url,
       fetchedAt: new Date().toISOString(),
       httpStatus: response ? response.status() : null,
       reachedBottom,
-      ...snap,
+      clean,
+      words,
+      html,
     };
   } finally {
     await browser.close();

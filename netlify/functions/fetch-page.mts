@@ -17,7 +17,7 @@ export default async (req: Request) => {
   }
   await store.setJSON(id, { status: "running" });
   try {
-    await store.setJSON(id, { status: "done", ...(await fetchPage(url)) });
+    await store.setJSON(id, { status: "done", ...(await fetchPage(url, { clean: body.clean === true })) });
   } catch (err) {
     // Caught on purpose: an uncaught error would make Netlify retry the fetch.
     console.error("fetch-page failed", url, err);

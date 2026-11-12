@@ -341,11 +341,12 @@ table.cat-table td.num { font-variant-numeric: tabular-nums; text-align: right; 
 /* Fetch-a-URL row: mirrors the Page Analysis picker (#lab-page-select + Load). */
 .nlp-scorer .fetch-row {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   align-items: center;
 }
 .nlp-scorer #nlp-fetch-url {
-  flex: 1;
+  flex: 1 1 260px;
   min-width: 0;
   font-family: var(--font-display);
   font-size: 13px;
@@ -359,6 +360,14 @@ table.cat-table td.num { font-variant-numeric: tabular-nums; text-align: right; 
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.nlp-scorer .fetch-clean {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
 }
 .nlp-scorer .fetch-info {
   display: block;

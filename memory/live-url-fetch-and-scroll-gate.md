@@ -29,6 +29,15 @@ Gotchas that cost time:
 - Measured on a cold start: about a minute for /cruises, about 90s for the ama.ab.ca homepage.
 - `[Bean finding, 2026-11-12, measured]` ama.ab.ca is slow to build in the Netlify browser: about 23s to DOMContentLoaded and 27-28s for `page.goto` to return, against about 2s for amatravel.ca. The original 30s navigation limit therefore failed roughly half the time on ama.ab.ca (Anna hit it on `https://www.ama.ab.ca/about`). The `www` redirect was a red herring; it resolves in under a second. Limit raised to 90s. Why ama.ab.ca is that slow there was not investigated.
 
+## Clean HTML option (added Nov 12 2026)
+
+- `netlify/lib/clean-page.mjs` is the `cleanPage()` function from Anna's "Clean HTML for NLP" Chrome extension (v1.0, her zip of 2026-11-12), copied unchanged. `[Anna, 2026-11-12]` It is what she means by "our cleaner". Keep it identical to the extension unless she asks; it must stay self-contained because it runs via `page.evaluate`.
+- Quick Scorer has a "Clean HTML" tickbox beside Fetch page, ticked by default `[Bean call, 2026-11-12, shown to Anna on the preview]`. Unticked gives the earlier stripped-but-uncleaned snapshot.
+- `[Anna, 2026-11-12]` A cleaned fetch must keep collapsed FAQ answers. The cleaner skips hidden elements, so the fetcher opens accordion panels first (`openCollapsedPanels` in `fetch-page.mjs`): `details`, plus `aria-expanded="false"` toggles whose `aria-controls` panel is `role="region"` or has accordion/collapse/faq in its class. Verified on amatravel.ca's ng-bootstrap accordion only.
+- Measured: /cruises 287 KB to 75 KB (FAQ answers kept, 810 words), /hotels 143 KB to 32 KB, ama.ab.ca/about 273 KB to 11 KB.
+- What the cleaner drops that the uncleaned fetch keeps: footer, non-breadcrumb nav, images and their alt text, icon ligature text, all attributes. It keeps the header's top strip and every `page-section` seam.
+- Why it matters `[Anna, 2026-11-12]`: the company pays for the NLP API and she wants to be smart about it. Whether Google bills HTML markup characters was not confirmed.
+
 ## The agreed plan for the bigger feature
 
 `[Bean synthesis, 2026-11-11, validated by Anna step by step]` Three pieces, built in this order, each shipped for Anna to try before the next:
